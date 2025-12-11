@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # Frontend Application (React served by Nginx)
+  frontend:
+    build: .
+    ports:
+      - "3000:80"
+    depends_on:
+      - database
+    networks:
+      - secure-vault-net
+    restart: always
+
+  # Database Service (PostgreSQL)
+  database:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secure_password_123 # SETUP: Change in production
+      POSTGRES_DB: secure_vault_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - secure-vault-net
+    restart: always
+
+networks:
+  secure-vault-net:
+    driver: bridge
+
+volumes:
+  postgres_data:

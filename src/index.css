@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light Mode Colors */
+    --color-background: 248 250 252;
+    /* slate-50 */
+    --color-surface: 255 255 255;
+    /* white */
+    --color-text: 15 23 42;
+    /* slate-900 */
+    --color-text-secondary: 71 85 105;
+    /* slate-600 */
+    --color-border: 226 232 240;
+    /* slate-200 */
+  }
+
+  [data-theme="dark"] {
+    /* Dark Mode Colors (current) */
+    --color-background: 15 23 42;
+    /* slate-900 */
+    --color-surface: 30 41 59;
+    /* slate-800 */
+    --color-text: 255 255 255;
+    /* white */
+    --color-text-secondary: 148 163 184;
+    /* slate-400 */
+    --color-border: 51 65 85;
+    /* slate-700 */
+  }
+
+  body {
+    @apply antialiased;
+    background-color: rgb(var(--color-background));
+    color: rgb(var(--color-text));
+  }
+}
