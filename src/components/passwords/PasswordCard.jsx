@@ -7,6 +7,7 @@ import PasswordHistoryModal from './PasswordHistoryModal';
 import EditPasswordModal from './EditPasswordModal';
 import SharePasswordModal from './SharePasswordModal';
 import toast from 'react-hot-toast';
+
 import { cn } from '../../lib/utils';
 
 export default function PasswordCard({ item }) {

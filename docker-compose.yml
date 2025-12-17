@@ -5,7 +5,7 @@ services:
   frontend:
     build: .
     ports:
-      - "3000:80"
+      - "5050:80"
     depends_on:
       - database
     networks:
