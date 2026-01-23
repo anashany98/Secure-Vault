@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Lock, ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 
 export default function Login() {
@@ -121,6 +122,9 @@ export default function Login() {
                 </form>
 
                 <p className="mt-6 text-center text-slate-500 text-xs">
+                    ¿No tienes cuenta? <Link to="/register" className="text-primary hover:underline">Regístrate aquí</Link>
+                </p>
+                <p className="mt-2 text-center text-slate-500 text-[10px]">
                     Protegido por Encriptación AES-256
                 </p>
             </div>

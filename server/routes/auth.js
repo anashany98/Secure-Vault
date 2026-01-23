@@ -24,10 +24,14 @@ router.post('/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
+        // Check if this is the first user
+        const usersCount = await pool.query('SELECT COUNT(*) FROM users');
+        const role = parseInt(usersCount.rows[0].count) === 0 ? 'admin' : 'user';
+
         // Insert user
         const newUser = await pool.query(
             'INSERT INTO users (email, name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
-            [email, name, hashedPassword, 'user']
+            [email, name, hashedPassword, role]
         );
 
         auditLog(newUser.rows[0].id, 'REGISTER', 'USER', newUser.rows[0].id, `Registered as ${newUser.rows[0].role}`, req);
