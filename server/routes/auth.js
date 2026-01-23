@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const auditLog = require('../utils/auditLogger');
 const crypto = require('crypto');
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
 
 // REGISTER
 router.post('/register', async (req, res) => {
@@ -123,9 +125,10 @@ router.post('/login/verify', async (req, res) => {
 
         const user = await pool.query('SELECT * FROM users WHERE id = $1', [payload.id]);
 
-        const isValid = authenticator.verify({
-            token: totpToken,
-            secret: user.rows[0].two_factor_secret
+        const isValid = speakeasy.totp.verify({
+            secret: user.rows[0].two_factor_secret,
+            encoding: 'base32',
+            token: totpToken
         });
 
         if (!isValid) return res.status(401).json({ message: "Código 2FA incorrecto" });
@@ -226,20 +229,16 @@ router.delete('/users/:id', verifyToken, async (req, res) => {
     }
 });
 
-const { authenticator } = require('otplib');
-const QRCode = require('qrcode');
-
 // 2FA SETUP (Generate Secret & QR)
 router.post('/2fa/setup', verifyToken, async (req, res) => {
     try {
-        const secret = authenticator.generateSecret();
-        const otpauth = authenticator.keyuri(req.user.email, 'SecureVault', secret);
-        const qrCode = await QRCode.toDataURL(otpauth);
+        const secret = speakeasy.generateSecret({ name: `SecureVault (${req.user.email})` });
+        const qrCode = await QRCode.toDataURL(secret.otpauth_url);
 
         // Temporarily store secret (unverified)
-        await pool.query('UPDATE users SET two_factor_secret = $1 WHERE id = $2', [secret, req.user.id]);
+        await pool.query('UPDATE users SET two_factor_secret = $1 WHERE id = $2', [secret.base32, req.user.id]);
 
-        res.json({ secret, qrCode });
+        res.json({ secret: secret.base32, qrCode });
     } catch (err) {
         console.error(err);
         res.status(500).send('Server Error');
@@ -256,9 +255,10 @@ router.post('/2fa/enable', verifyToken, async (req, res) => {
             return res.status(400).json({ message: "No se ha configurado 2FA" });
         }
 
-        const isValid = authenticator.verify({
-            token,
-            secret: user.rows[0].two_factor_secret
+        const isValid = speakeasy.totp.verify({
+            secret: user.rows[0].two_factor_secret,
+            encoding: 'base32',
+            token
         });
 
         if (!isValid) {
@@ -291,9 +291,10 @@ router.post('/2fa/disable', verifyToken, async (req, res) => {
         if (!validPassword) return res.status(401).json({ message: "Contraseña incorrecta" });
 
         // Verify TOTP
-        const isValid = authenticator.verify({
-            token,
-            secret: user.rows[0].two_factor_secret
+        const isValid = speakeasy.totp.verify({
+            secret: user.rows[0].two_factor_secret,
+            encoding: 'base32',
+            token
         });
 
         if (!isValid) return res.status(400).json({ message: "Código inválido" });
