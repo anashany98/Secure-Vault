@@ -7,7 +7,7 @@ services:
       context: ./server
       dockerfile: Dockerfile.backend
     environment:
-      - PORT=3000
+      - PORT=3333
       - DATABASE_URL=postgres://admin:secure_password_123@database:5432/secure_vault_db
       - JWT_SECRET=change_this_secret_in_prod
     depends_on:
@@ -15,7 +15,7 @@ services:
     networks:
       - secure-vault-net
     ports:
-      - "3000:3000"
+      - "3333:3333"
     restart: always
 
   # Frontend Application
@@ -24,7 +24,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5050:80"
+      - "8443:80"
     depends_on:
       - backend
     networks:
@@ -42,7 +42,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database_schema.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "54321:5432"
     networks:
       - secure-vault-net
     restart: always
