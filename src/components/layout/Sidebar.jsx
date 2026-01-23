@@ -1,4 +1,4 @@
-import { Shield, Key, Star, Trash2, Settings, LogOut, Package, Share2, FileText, StickyNote, Users, Folder, ChevronRight, ChevronDown, Plus, Edit, Tag } from 'lucide-react';
+import { Shield, Key, Star, Trash2, Settings, LogOut, Package, Share2, FileText, StickyNote, Users, Folder, ChevronRight, ChevronDown, Plus, Edit, Tag, Activity } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useView } from '../../context/ViewContext';

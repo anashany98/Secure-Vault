@@ -65,8 +65,6 @@ export const PasswordProvider = ({ children }) => {
 
         const fetchAuditLogs = async () => {
             try {
-                const logs = await api.get('/api/audit'); // Wait, api.js might already prepend /api
-                // Let's check api.js
                 const items = await api.get('/audit');
                 setAuditLogs(items);
             } catch (err) {
