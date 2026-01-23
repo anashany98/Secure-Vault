@@ -16,6 +16,7 @@ export const PasswordProvider = ({ children }) => {
     const { trackCreate, trackDelete } = useUsage();
     const [passwords, setPasswords] = useState([]);
     const [auditLogs, setAuditLogs] = useState([]);
+    const [filterTag, setFilterTag] = useState(null); // null means no filter
 
     // Fetch passwords on mount or user change
     useEffect(() => {
@@ -282,7 +283,9 @@ export const PasswordProvider = ({ children }) => {
                     const items = await api.get('/audit');
                     setAuditLogs(items);
                 } catch (err) { console.error(err); }
-            }
+            },
+            filterTag,
+            setFilterTag
         }}>
             {children}
         </PasswordContext.Provider>

@@ -40,6 +40,10 @@ export const AuthProvider = ({ children }) => {
         try {
             const data = await api.post('/auth/login', { email, password });
 
+            if (data.requires2FA) {
+                return { success: true, requires2FA: true, tempToken: data.tempToken };
+            }
+
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
             setUser(data.user);
@@ -47,8 +51,7 @@ export const AuthProvider = ({ children }) => {
             return { success: true };
         } catch (error) {
             console.warn("API Login failed, trying local fallback...", error);
-
-            // Fallback for Local Dev
+            // ... fallback logic ...
             if (email === 'admin@company.com' && password === 'admin123') {
                 localStorage.setItem('token', MOCK_ADMIN.token);
                 localStorage.setItem('user', JSON.stringify(MOCK_ADMIN));
@@ -57,8 +60,22 @@ export const AuthProvider = ({ children }) => {
                 return { success: true };
             }
 
-            toast.error('Error al iniciar sesión. (Servidor no disponible)');
-            return { success: false, error: 'Credenciales inválidas (Offline)' };
+            toast.error(error.message || 'Error al iniciar sesión');
+            return { success: false, error: error.message || 'Credenciales inválidas' };
+        }
+    };
+
+    const verify2FA = async (tempToken, token) => {
+        try {
+            const data = await api.post('/auth/login/verify', { tempToken, token });
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            setUser(data.user);
+            toast.success('Acceso verificado');
+            return { success: true };
+        } catch (error) {
+            toast.error('Código 2FA incorrecto');
+            return { success: false, error: 'Código inválido' };
         }
     };
 
@@ -84,6 +101,7 @@ export const AuthProvider = ({ children }) => {
         <AuthContext.Provider value={{
             user,
             login,
+            verify2FA,
             logout,
             register,
             loading,

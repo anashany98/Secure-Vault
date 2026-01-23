@@ -10,6 +10,10 @@ const PORT = process.env.PORT || 3000;
 
 const { apiLimiter } = require('./middleware/rateLimiter');
 const { ipBlocker } = require('./middleware/ipBlocker');
+const { initBackupService } = require('./services/backupService');
+
+// Initialize services
+initBackupService();
 
 // Middleware
 app.use(helmet());
@@ -47,9 +51,11 @@ app.get('/api/health', (req, res) => {
 });
 
 // Start Server
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}
 
 // Handle shutdown
 process.on('SIGTERM', () => {
@@ -57,3 +63,5 @@ process.on('SIGTERM', () => {
         console.log('Pool has ended');
     });
 });
+
+module.exports = app;

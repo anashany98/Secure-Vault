@@ -15,7 +15,6 @@ export default function AddPasswordModal({ isOpen, onClose }) {
         title: '',
         username: '',
         password: '',
-        password: '',
         url: '',
         notes: '', // Used for "Person/Owner"
         tags: [],

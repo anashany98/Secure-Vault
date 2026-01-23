@@ -18,7 +18,7 @@ import { useFolders } from '../context/FolderContext';
 // ...
 export default function Dashboard() {
     const { user } = useAuth();
-    const { passwords, checkAllPasswordsForBreaches } = usePasswords();
+    const { passwords, checkAllPasswordsForBreaches, filterTag, setFilterTag } = usePasswords();
     const { currentView, activeFolderId } = useView(); // Destructure activeFolderId correctly
     const { folders } = useFolders(); // Get folders
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -92,6 +92,9 @@ export default function Dashboard() {
 
     // 3. Advanced Filtering
     const filteredPasswords = viewPasswords.filter(p => {
+        // Tag Filter (Active Tag from Sidebar)
+        if (filterTag && (!p.tags || !p.tags.some(t => t.name === filterTag))) return false;
+
         // Global Search
         const matchesGlobal =
             p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -101,7 +104,6 @@ export default function Dashboard() {
         if (!matchesGlobal) return false;
 
         // Specific Filters (AND logic)
-        // Note: Dropdown values are exact matches usually, but we'll stick to includes for flexibility or switch to exact
         if (filters.service && p.title !== filters.service) return false;
         if (filters.user && p.username !== filters.user) return false;
         if (filters.person && p.meta_person !== filters.person) return false;
@@ -222,7 +224,17 @@ export default function Dashboard() {
         <>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-white mb-2">{getPageTitle()}</h1>
+                    <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
+                        {getPageTitle()}
+                        {filterTag && (
+                            <span className="flex items-center gap-1.5 px-3 py-1 bg-primary/20 text-primary border border-primary/30 rounded-full text-sm">
+                                Tag: {filterTag}
+                                <button onClick={() => setFilterTag(null)} className="hover:text-white">
+                                    <X className="w-3 h-3" />
+                                </button>
+                            </span>
+                        )}
+                    </h1>
                     <p className="text-slate-400">Bienvenido de nuevo, {user?.name}</p>
                 </div>
 

@@ -1,8 +1,9 @@
-import { Shield, Key, Star, Trash2, Settings, LogOut, Package, Share2, Keyboard, FileText, Activity, StickyNote, Users, Folder, ChevronRight, ChevronDown, Plus, Edit } from 'lucide-react';
-import { useState } from 'react';
+import { Shield, Key, Star, Trash2, Settings, LogOut, Package, Share2, FileText, StickyNote, Users, Folder, ChevronRight, ChevronDown, Plus, Edit, Tag } from 'lucide-react';
+import { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useView } from '../../context/ViewContext';
 import { useFolders } from '../../context/FolderContext';
+import { usePasswords } from '../../context/PasswordContext';
 import { cn } from '../../lib/utils';
 import KeyboardShortcutsModal from '../common/KeyboardShortcutsModal';
 import AddFolderModal from '../folders/AddFolderModal';
@@ -120,6 +121,7 @@ const FolderItem = ({ folder, level = 0, isActive, onSelect, onAddSubfolder, onR
 };
 
 export default function Sidebar() {
+    const { passwords, filterTag, setFilterTag } = usePasswords();
     const { logout } = useAuth();
     const { currentView, setCurrentView, activeFolderId, setActiveFolderId } = useView();
     const { getSubfolders } = useFolders();
@@ -134,9 +136,26 @@ export default function Sidebar() {
 
     const rootFolders = getSubfolders('root');
 
+    // Calculate unique tags
+    const availableTags = useMemo(() => {
+        const tagsSet = new Set();
+        passwords.forEach(p => {
+            if (p.tags && Array.isArray(p.tags)) {
+                p.tags.forEach(t => tagsSet.add(t.name));
+            }
+        });
+        return Array.from(tagsSet).sort();
+    }, [passwords]);
+
+    const handleTagSelect = (tagName) => {
+        setFilterTag(tagName);
+        setCurrentView('all'); // Go to main vault to see tagged items
+    };
+
     const handleFolderSelect = (folderId) => {
         setCurrentView('folder');
         setActiveFolderId(folderId);
+        setFilterTag(null); // Clear tag filter when entering folder
     };
 
     const openAddFolder = (parentId = 'root') => {
@@ -159,26 +178,36 @@ export default function Sidebar() {
                         <NavItem
                             icon={Key}
                             label="Todas las contraseñas"
-                            active={currentView === 'all'}
-                            onClick={() => setCurrentView('all')}
+                            active={currentView === 'all' && !filterTag}
+                            onClick={() => {
+                                setCurrentView('all');
+                                setFilterTag(null);
+                            }}
                         />
                         <NavItem
                             icon={Star}
                             label="Favoritos"
                             active={currentView === 'favorites'}
-                            onClick={() => setCurrentView('favorites')}
+                            onClick={() => {
+                                setCurrentView('favorites');
+                                setFilterTag(null);
+                            }}
                         />
                         <NavItem
                             icon={Share2}
                             label="Compartidas"
                             active={currentView === 'shared'}
-                            onClick={() => setCurrentView('shared')}
+                            onClick={() => {
+                                setCurrentView('shared');
+                                setFilterTag(null);
+                            }}
                         />
                     </nav>
                 </div>
 
-                {/* Folders Section - Scrollable */}
+                {/* Main scrollable section */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2">
+                    {/* Folders Section */}
                     <div className="flex items-center justify-between px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 group">
                         <span>Carpetas</span>
                         <button
@@ -190,7 +219,7 @@ export default function Sidebar() {
                         </button>
                     </div>
 
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 mb-6">
                         {rootFolders.map(folder => (
                             <FolderItem
                                 key={folder.id}
@@ -208,7 +237,31 @@ export default function Sidebar() {
                         )}
                     </div>
 
-                    <div className="mt-6 flex items-center justify-between px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    {/* Tags Section */}
+                    <div className="flex items-center justify-between px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <span>Etiquetas</span>
+                    </div>
+                    <div className="space-y-0.5 max-h-40 overflow-y-auto px-2 mb-6">
+                        {availableTags.map(tagName => (
+                            <button
+                                key={tagName}
+                                onClick={() => handleTagSelect(tagName)}
+                                className={cn(
+                                    "w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors",
+                                    filterTag === tagName ? "bg-primary/10 text-primary font-bold" : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                                )}
+                            >
+                                <Tag className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{tagName}</span>
+                            </button>
+                        ))}
+                        {availableTags.length === 0 && (
+                            <p className="px-3 text-[10px] text-slate-600 italic">Sin etiquetas</p>
+                        )}
+                    </div>
+
+                    {/* Organization Section */}
+                    <div className="flex items-center justify-between px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
                         <span>Organización</span>
                     </div>
                     <nav className="space-y-1">
@@ -216,19 +269,28 @@ export default function Sidebar() {
                             icon={StickyNote}
                             label="Notas Seguras"
                             active={currentView === 'notes'}
-                            onClick={() => setCurrentView('notes')}
+                            onClick={() => {
+                                setCurrentView('notes');
+                                setFilterTag(null);
+                            }}
                         />
                         <NavItem
                             icon={Users}
                             label="Grupos"
                             active={currentView === 'groups'}
-                            onClick={() => setCurrentView('groups')}
+                            onClick={() => {
+                                setCurrentView('groups');
+                                setFilterTag(null);
+                            }}
                         />
                         <NavItem
                             icon={Package}
                             label="Inventario"
                             active={currentView === 'inventory'}
-                            onClick={() => setCurrentView('inventory')}
+                            onClick={() => {
+                                setCurrentView('inventory');
+                                setFilterTag(null);
+                            }}
                         />
                     </nav>
                 </div>
@@ -239,13 +301,28 @@ export default function Sidebar() {
                         icon={Trash2}
                         label="Papelera"
                         active={currentView === 'trash'}
-                        onClick={() => setCurrentView('trash')}
+                        onClick={() => {
+                            setCurrentView('trash');
+                            setFilterTag(null);
+                        }}
                     />
                     <NavItem
                         icon={Settings}
                         label="Ajustes"
                         active={currentView === 'settings'}
-                        onClick={() => setCurrentView('settings')}
+                        onClick={() => {
+                            setCurrentView('settings');
+                            setFilterTag(null);
+                        }}
+                    />
+                    <NavItem
+                        icon={Activity}
+                        label="Sesiones"
+                        active={currentView === 'sessions'}
+                        onClick={() => {
+                            setCurrentView('sessions');
+                            setFilterTag(null);
+                        }}
                     />
                     <NavItem
                         icon={LogOut}

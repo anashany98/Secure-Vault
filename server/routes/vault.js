@@ -67,12 +67,29 @@ router.put('/:id', verifyToken, async (req, res) => {
 
         const currentItem = checkOwner.rows[0];
 
+        // Calculate Audit Diff
+        const diff = {};
+        const fieldsToCompare = ['title', 'username', 'url', 'notes', 'tags', 'custom_fields'];
+        fieldsToCompare.forEach(field => {
+            const oldValue = currentItem[field];
+            const newValue = req.body[field];
+
+            // Handle arrays and objects (tags, custom_fields)
+            if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+                diff[field] = {
+                    old: oldValue,
+                    new: newValue
+                };
+            }
+        });
+
         // Password History Logic
         if (encrypted_password && encrypted_password !== currentItem.encrypted_password) {
             await pool.query(
                 'INSERT INTO password_history (vault_item_id, encrypted_password) VALUES ($1, $2)',
                 [id, currentItem.encrypted_password]
             );
+            diff.password = { changed: true }; // Don't log actual encrypted keys in audit for extra security
         }
 
         const updateItem = await pool.query(
@@ -81,7 +98,7 @@ router.put('/:id', verifyToken, async (req, res) => {
             [title, username, encrypted_password, url, meta_person, is_favorite, tags, custom_fields, id]
         );
 
-        auditLog(req.user.id, 'UPDATE_PASSWORD', 'PASSWORD', id, `Updated ${title}`, req);
+        auditLog(req.user.id, 'UPDATE_PASSWORD', 'PASSWORD', id, diff, req);
 
         res.json(updateItem.rows[0]);
     } catch (err) {

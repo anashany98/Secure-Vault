@@ -37,6 +37,7 @@ import NotesPage from './pages/NotesPage';
 import TrashPage from './pages/TrashPage';
 import GroupsPage from './pages/GroupsPage';
 import SharePage from './pages/SharePage';
+import Sessions from './pages/Sessions';
 
 function AppContent() {
   const { isAuthenticated } = useAuth();
@@ -78,6 +79,8 @@ function AppContent() {
         return <GroupsPage />;
       case 'usage':
         return <UsageStatistics />;
+      case 'sessions':
+        return <Sessions />;
       default:
         return <Dashboard />;
     }

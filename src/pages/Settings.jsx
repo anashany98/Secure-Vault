@@ -7,7 +7,8 @@ import { useTheme } from '../context/ThemeContext';
 import ThemeCustomizer from '../components/settings/ThemeCustomizer';
 import ExportVaultModal from '../components/settings/ExportVaultModal';
 import ImportVaultModal from '../components/settings/ImportVaultModal';
-import UsersManager from '../components/settings/UsersManager'; // Import UsersManager
+import UsersManager from '../components/settings/UsersManager';
+import TwoFactorSettings from '../components/settings/TwoFactorSettings';
 import toast from 'react-hot-toast';
 
 export default function Settings() {
@@ -62,12 +63,21 @@ export default function Settings() {
                     </div>
                 </button>
                 <button
+                    onClick={() => setActiveTab('seguridad')}
+                    className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'seguridad' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
+                >
+                    <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4" />
+                        Seguridad
+                    </div>
+                </button>
+                <button
                     onClick={() => setActiveTab('preferences')}
                     className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'preferences' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                 >
                     <div className="flex items-center gap-2">
-                        <Shield className="w-4 h-4" />
-                        Preferencias
+                        <Sun className="w-4 h-4" />
+                        Apariencia
                     </div>
                 </button>
             </div>
@@ -75,6 +85,42 @@ export default function Settings() {
             {activeTab === 'users' && isAdmin ? (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <UsersManager />
+                </div>
+            ) : activeTab === 'seguridad' ? (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <TwoFactorSettings user={currentUser} />
+
+                    {/* Auto-logout */}
+                    <div className="bg-surface border border-slate-700 rounded-2xl p-6">
+                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <Clock className="w-5 h-5 text-primary" />
+                            Auto-logout por Inactividad
+                        </h3>
+                        {/* ... auto-logout content ... (moving it here from preferences) */}
+                        <p className="text-sm text-slate-400 mb-4">
+                            Cierra sesión automáticamente después de un período de inactividad
+                        </p>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-white">Tiempo de espera:</span>
+                                <span className="text-primary font-semibold">
+                                    {localStorage.getItem('auto_logout_minutes') || 5} minutos
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                min="1"
+                                max="60"
+                                value={localStorage.getItem('auto_logout_minutes') || 5}
+                                onChange={(e) => {
+                                    localStorage.setItem('auto_logout_minutes', e.target.value);
+                                    window.dispatchEvent(new Event('auto-logout-change'));
+                                    window.dispatchEvent(new Event('storage'));
+                                }}
+                                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary"
+                            />
+                        </div>
+                    </div>
                 </div>
             ) : activeTab === 'preferences' ? (
                 <div className="space-y-6">
@@ -110,41 +156,9 @@ export default function Settings() {
                         <ThemeCustomizer />
                     </div>
 
-                    {/* Auto-logout */}
+                    {/* Theme Customizer */}
                     <div className="bg-surface border border-slate-700 rounded-2xl p-6">
-                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                            <Clock className="w-5 h-5 text-primary" />
-                            Auto-logout por Inactividad
-                        </h3>
-                        <p className="text-sm text-slate-400 mb-4">
-                            Cierra sesión automáticamente después de un período de inactividad
-                        </p>
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <span className="text-white">Tiempo de espera:</span>
-                                <span className="text-primary font-semibold">
-                                    {localStorage.getItem('auto_logout_minutes') || 5} minutos
-                                </span>
-                            </div>
-                            <input
-                                type="range"
-                                min="1"
-                                max="60"
-                                value={localStorage.getItem('auto_logout_minutes') || 5}
-                                onChange={(e) => {
-                                    localStorage.setItem('auto_logout_minutes', e.target.value);
-                                    window.dispatchEvent(new Event('auto-logout-change'));
-                                    // Force re-render to update the display value
-                                    window.dispatchEvent(new Event('storage'));
-                                }}
-                                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary"
-                            />
-                            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                                <p className="text-sm text-blue-400">
-                                    💡 El auto-logout está activado. Cualquier acción (mover el mouse, hacer click, etc.) reinicia el contador.
-                                </p>
-                            </div>
-                        </div>
+                        <ThemeCustomizer />
                     </div>
 
                     {/* Data Management */}

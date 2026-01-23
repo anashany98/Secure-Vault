@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import Layout from '../components/layout/Layout';
-import { FileText, Download, Filter, Calendar, User, Activity } from 'lucide-react';
+import { FileText, Download, Filter, Calendar, User, Activity, X } from 'lucide-react';
 import { usePasswords } from '../context/PasswordContext';
 
 export default function AuditLog() {
     const { auditLogs } = usePasswords();
+    const [selectedLog, setSelectedLog] = useState(null);
     const [filter, setFilter] = useState({
         action: 'all',
         dateFrom: '',
@@ -20,7 +21,7 @@ export default function AuditLog() {
             if (filter.dateFrom && logTime < new Date(filter.dateFrom).getTime()) return false;
             if (filter.dateTo && logTime > new Date(filter.dateTo).getTime()) return false;
             return true;
-        }); // Backend already sorts DESC
+        });
     }, [auditLogs, filter]);
 
     const exportToCSV = () => {
@@ -29,7 +30,7 @@ export default function AuditLog() {
             new Date(log.created_at).toLocaleString('es-ES'),
             log.action,
             log.user_id || 'Sistema',
-            log.details || ''
+            typeof log.details === 'object' ? JSON.stringify(log.details) : (log.details || '')
         ]);
 
         const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
@@ -43,11 +44,26 @@ export default function AuditLog() {
     };
 
     const actionColors = {
-        create: 'bg-green-500/20 text-green-400 border-green-500/50',
-        update: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
-        delete: 'bg-red-500/20 text-red-400 border-red-500/50',
-        restore: 'bg-purple-500/20 text-purple-400 border-purple-500/50',
-        share: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+        CREATE_PASSWORD: 'bg-green-500/20 text-green-400 border-green-500/50',
+        UPDATE_PASSWORD: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+        DELETE_PASSWORD: 'bg-red-500/20 text-red-400 border-red-500/50',
+        IMPORT_CSV: 'bg-purple-500/20 text-purple-400 border-purple-500/50',
+        LOGIN: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50',
+    };
+
+    const renderDetails = (details) => {
+        if (!details) return '-';
+        if (typeof details === 'string') return details;
+
+        // If it's a diff object
+        return (
+            <button
+                onClick={() => setSelectedLog(details)}
+                className="text-primary hover:underline font-medium"
+            >
+                {Object.keys(details).length} cambios detectados
+            </button>
+        );
     };
 
     return (
@@ -86,11 +102,11 @@ export default function AuditLog() {
                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
                         >
                             <option value="all">Todas</option>
-                            <option value="create">Crear</option>
-                            <option value="update">Actualizar</option>
-                            <option value="delete">Eliminar</option>
-                            <option value="restore">Restaurar</option>
-                            <option value="share">Compartir</option>
+                            <option value="CREATE_PASSWORD">Crear</option>
+                            <option value="UPDATE_PASSWORD">Actualizar</option>
+                            <option value="DELETE_PASSWORD">Eliminar</option>
+                            <option value="IMPORT_CSV">Importar</option>
+                            <option value="LOGIN">Login</option>
                         </select>
                     </div>
 
@@ -136,8 +152,51 @@ export default function AuditLog() {
                 </div>
             </div>
 
+            {/* Modal for Diffs */}
+            {selectedLog && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+                    <div className="bg-surface border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between p-6 border-b border-slate-700">
+                            <h2 className="text-xl font-bold text-white">Detalle de Cambios</h2>
+                            <button onClick={() => setSelectedLog(null)} className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-lg transition-colors">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
+                            {Object.entries(selectedLog).map(([field, delta]) => (
+                                <div key={field} className="space-y-1">
+                                    <h3 className="text-sm font-bold text-primary uppercase tracking-wider">{field}</h3>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div className="p-2 bg-red-500/10 border border-red-500/20 rounded">
+                                            <span className="text-slate-500 block mb-1">Anterior:</span>
+                                            <span className="text-red-400 break-all">
+                                                {typeof delta.old === 'object' ? JSON.stringify(delta.old) : (delta.old || '(vacío)')}
+                                            </span>
+                                        </div>
+                                        <div className="p-2 bg-green-500/10 border border-green-500/20 rounded">
+                                            <span className="text-slate-500 block mb-1">Nuevo:</span>
+                                            <span className="text-green-400 break-all">
+                                                {typeof delta.new === 'object' ? JSON.stringify(delta.new) : (delta.new || '(vacío)')}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-6 border-t border-slate-700 flex justify-end">
+                            <button
+                                onClick={() => setSelectedLog(null)}
+                                className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg transition-colors"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Log Table */}
-            <div className="bg-surface border border-slate-700 rounded-xl overflow-hidden">
+            <div className="bg-surface border border-slate-700 rounded-xl overflow-hidden mt-8">
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-slate-800/50 border-b border-slate-700">
@@ -165,7 +224,7 @@ export default function AuditLog() {
                                             {log.user_id ? 'Usuario' : 'Sistema'}
                                         </td>
                                         <td className="px-4 py-3 text-sm text-slate-400">
-                                            {log.details || '-'}
+                                            {renderDetails(log.details)}
                                         </td>
                                     </tr>
                                 ))

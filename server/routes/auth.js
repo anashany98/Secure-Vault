@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 
 const { loginLimiter } = require('../middleware/rateLimiter');
 const auditLog = require('../utils/auditLogger');
+const crypto = require('crypto');
 
 // REGISTER
 router.post('/register', async (req, res) => {
@@ -61,14 +62,40 @@ router.post('/login', loginLimiter, async (req, res) => {
         // Reset failed attempts on success
         await pool.query('UPDATE users SET failed_attempts = 0, lockout_until = NULL WHERE id = $1', [user.rows[0].id]);
 
-        // Generate Token
+        // Generate Session ID
+        const sessionId = crypto.randomUUID();
+
+        // Generate Token including sessionId
         const token = jwt.sign(
-            { id: user.rows[0].id, role: user.rows[0].role },
+            { id: user.rows[0].id, role: user.rows[0].role, sessionId },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
 
+        // Register Session in DB
+        const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+        await pool.query(
+            `INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, expires_at) 
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [sessionId, user.rows[0].id, 'JWT_SESSION', ipAddress, userAgent, expiresAt]
+        );
+
         auditLog(user.rows[0].id, 'LOGIN', 'USER', user.rows[0].id, 'Success', req);
+
+        // Check if 2FA is enabled
+        if (user.rows[0].two_factor_enabled) {
+            return res.json({
+                requires2FA: true,
+                tempToken: jwt.sign(
+                    { id: user.rows[0].id, isPending2FA: true },
+                    process.env.JWT_SECRET,
+                    { expiresIn: '5m' }
+                )
+            });
+        }
 
         res.json({
             token,
@@ -86,7 +113,89 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 });
 
+// LOGIN VERIFY (2FA Challenge)
+router.post('/login/verify', async (req, res) => {
+    try {
+        const { tempToken, token: totpToken } = req.body;
+
+        const payload = jwt.verify(tempToken, process.env.JWT_SECRET);
+        if (!payload.isPending2FA) return res.status(401).json({ message: "Challenge inválido" });
+
+        const user = await pool.query('SELECT * FROM users WHERE id = $1', [payload.id]);
+
+        const isValid = authenticator.verify({
+            token: totpToken,
+            secret: user.rows[0].two_factor_secret
+        });
+
+        if (!isValid) return res.status(401).json({ message: "Código 2FA incorrecto" });
+
+        // Proceed with full login
+        const sessionId = crypto.randomUUID();
+        const token = jwt.sign(
+            { id: user.rows[0].id, role: user.rows[0].role, sessionId },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+        await pool.query(
+            `INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, expires_at) 
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [sessionId, user.rows[0].id, 'JWT_SESSION', ipAddress, userAgent, expiresAt]
+        );
+
+        res.json({
+            token,
+            user: {
+                id: user.rows[0].id,
+                email: user.rows[0].email,
+                name: user.rows[0].name,
+                role: user.rows[0].role
+            }
+        });
+    } catch (err) {
+        res.status(401).json({ message: "Sesión expirada" });
+    }
+});
+
 const verifyToken = require('../middleware/auth');
+
+// GET ACTIVE SESSIONS
+router.get('/sessions', verifyToken, async (req, res) => {
+    try {
+        const sessions = await pool.query(
+            `SELECT id, ip_address, user_agent, last_active, created_at, 
+             (id = $1) as is_current
+             FROM sessions 
+             WHERE user_id = $2 AND is_revoked = false AND expires_at > NOW()
+             ORDER BY created_at DESC`,
+            [req.user.sessionId, req.user.id]
+        );
+        res.json(sessions.rows);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+// REVOKE SESSION
+router.delete('/sessions/:id', verifyToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query(
+            'UPDATE sessions SET is_revoked = true WHERE id = $1 AND user_id = $2',
+            [id, req.user.id]
+        );
+        res.json({ message: "Sesión cerrada correctamente" });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
 
 // GET ALL USERS (Admin only)
 router.get('/users', verifyToken, async (req, res) => {
@@ -117,23 +226,86 @@ router.delete('/users/:id', verifyToken, async (req, res) => {
     }
 });
 
-// ADMIN RESET PASSWORD
-router.put('/users/:id/reset-password', verifyToken, async (req, res) => {
+const { authenticator } = require('otplib');
+const QRCode = require('qrcode');
+
+// 2FA SETUP (Generate Secret & QR)
+router.post('/2fa/setup', verifyToken, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ message: "Access Denied" });
-        }
-        const { id } = req.params;
-        const { newPassword } = req.body;
+        const secret = authenticator.generateSecret();
+        const otpauth = authenticator.keyuri(req.user.email, 'SecureVault', secret);
+        const qrCode = await QRCode.toDataURL(otpauth);
 
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(newPassword, salt);
+        // Temporarily store secret (unverified)
+        await pool.query('UPDATE users SET two_factor_secret = $1 WHERE id = $2', [secret, req.user.id]);
 
-        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedPassword, id]);
-        res.json("Password reset successful");
-
+        res.json({ secret, qrCode });
     } catch (err) {
-        console.error(err.message);
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// 2FA ENABLE (Verify and Finalize)
+router.post('/2fa/enable', verifyToken, async (req, res) => {
+    try {
+        const { token } = req.body;
+        const user = await pool.query('SELECT two_factor_secret FROM users WHERE id = $1', [req.user.id]);
+
+        if (!user.rows[0].two_factor_secret) {
+            return res.status(400).json({ message: "No se ha configurado 2FA" });
+        }
+
+        const isValid = authenticator.verify({
+            token,
+            secret: user.rows[0].two_factor_secret
+        });
+
+        if (!isValid) {
+            return res.status(400).json({ message: "Código inválido" });
+        }
+
+        // Generate recovery codes
+        const recoveryCodes = Array.from({ length: 10 }, () => crypto.randomBytes(4).toString('hex'));
+
+        await pool.query(
+            'UPDATE users SET two_factor_enabled = true, recovery_codes = $1 WHERE id = $2',
+            [JSON.stringify(recoveryCodes), req.user.id]
+        );
+
+        res.json({ message: "2FA habilitado correctamente", recoveryCodes });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// 2FA DISABLE
+router.post('/2fa/disable', verifyToken, async (req, res) => {
+    try {
+        const { password, token } = req.body;
+
+        // Check password first
+        const user = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+        const validPassword = await bcrypt.compare(password, user.rows[0].password_hash);
+        if (!validPassword) return res.status(401).json({ message: "Contraseña incorrecta" });
+
+        // Verify TOTP
+        const isValid = authenticator.verify({
+            token,
+            secret: user.rows[0].two_factor_secret
+        });
+
+        if (!isValid) return res.status(400).json({ message: "Código inválido" });
+
+        await pool.query(
+            'UPDATE users SET two_factor_enabled = false, two_factor_secret = NULL, recovery_codes = $1 WHERE id = $2',
+            ['[]', req.user.id]
+        );
+
+        res.json({ message: "2FA deshabilitado" });
+    } catch (err) {
+        console.error(err);
         res.status(500).send('Server Error');
     }
 });
