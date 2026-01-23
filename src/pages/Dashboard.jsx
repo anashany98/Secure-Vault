@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import Layout from '../components/layout/Layout';
-import { Plus, Search, ShieldCheck, AlertTriangle, Settings, Trash2, Upload, Filter, X, LayoutGrid, List } from 'lucide-react';
+import { Plus, Search, ShieldCheck, AlertTriangle, Settings, Trash2, Upload, Filter, X, LayoutGrid, List, Link as LinkIcon, FileJson, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePasswords } from '../context/PasswordContext';
 import { useView } from '../context/ViewContext';
@@ -8,15 +8,26 @@ import PasswordCard from '../components/passwords/PasswordCard';
 import PasswordTable from '../components/passwords/PasswordTable';
 import AddPasswordModal from '../components/passwords/AddPasswordModal';
 import ImportPasswordsModal from '../components/passwords/ImportPasswordsModal';
+import ShareModal from '../components/sharing/ShareModal';
+import PasswordDetailModal from '../components/passwords/PasswordDetailModal';
 import BreachCheckModal from '../components/passwords/BreachCheckModal';
+import ExportVaultModal from '../components/settings/ExportVaultModal';
+import ImportVaultModal from '../components/settings/ImportVaultModal';
 
+import { useFolders } from '../context/FolderContext';
+// ...
 export default function Dashboard() {
     const { user } = useAuth();
     const { passwords, checkAllPasswordsForBreaches } = usePasswords();
-    const { currentView } = useView();
+    const { currentView, activeFolderId } = useView(); // Destructure activeFolderId correctly
+    const { folders } = useFolders(); // Get folders
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
     const [isBreachCheckOpen, setIsBreachCheckOpen] = useState(false);
+    const [shareModal, setShareModal] = useState({ isOpen: false, item: null });
+    const [selectedPassword, setSelectedPassword] = useState(null);
 
     // View Mode State
     const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
@@ -62,8 +73,15 @@ export default function Dashboard() {
 
     // 1. Filter by view (Deleted vs Active)
     let viewPasswords = passwords;
+
     if (currentView === 'trash') {
         viewPasswords = passwords.filter(p => p.isDeleted);
+    } else if (currentView === 'folder' && activeFolderId) {
+        // Filter by Folder
+        // NOTE: We haven't added folderId to passwords yet in Add data, but logic is here.
+        // Assuming passwords have 'folderId' property, or we default to 'root' or unassigned if null?
+        // Actually, if activeFolderId is set, we show items with that folderId.
+        viewPasswords = passwords.filter(p => !p.isDeleted && p.folderId === activeFolderId);
     } else {
         viewPasswords = passwords.filter(p => !p.isDeleted);
         // 2. Filter by favorites if needed
@@ -106,6 +124,10 @@ export default function Dashboard() {
         if (currentView === 'favorites') return 'Favoritos';
         if (currentView === 'trash') return 'Papelera';
         if (currentView === 'settings') return 'Ajustes';
+        if (currentView === 'folder') {
+            const folder = folders.find(f => f.id === activeFolderId);
+            return folder ? folder.name : 'Carpeta';
+        }
         return 'Mi Bóveda';
     };
 
@@ -120,7 +142,7 @@ export default function Dashboard() {
         // Wait, I am replacing the whole file content basically to insert imports and functions. 
         // Actually, let me just return the full component logic correctly for the file.)
         return (
-            <Layout>
+            <>
                 <h1 className="text-3xl font-bold text-white mb-6">Ajustes</h1>
                 <div className="bg-surface border border-slate-700 rounded-2xl p-6 max-w-2xl">
                     <div className="flex items-center gap-4 mb-6">
@@ -161,15 +183,43 @@ export default function Dashboard() {
                                 Importar
                             </button>
                         </div>
+                        <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                            <div>
+                                <p className="text-white font-medium">Exportar Copia de Seguridad</p>
+                                <p className="text-sm text-slate-500">Descarga tus datos encriptados</p>
+                            </div>
+                            <button
+                                onClick={() => setIsExportModalOpen(true)}
+                                className="flex items-center gap-2 text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                <Upload className="w-4 h-4 rotate-180" />
+                                Exportar
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-red-900/10 rounded-xl border border-red-900/20">
+                            <div>
+                                <p className="text-white font-medium">Restaurar Copia de Seguridad</p>
+                                <p className="text-sm text-slate-500">Sobrescribe los datos actuales</p>
+                            </div>
+                            <button
+                                onClick={() => setIsRestoreModalOpen(true)}
+                                className="flex items-center gap-2 text-red-100 bg-red-900/50 hover:bg-red-900/80 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border border-red-500/30"
+                            >
+                                <RefreshCw className="w-4 h-4" />
+                                Restaurar
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <ImportPasswordsModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} />
-            </Layout>
+                <ExportVaultModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} />
+                <ImportVaultModal isOpen={isRestoreModalOpen} onClose={() => setIsRestoreModalOpen(false)} />
+            </>
         )
     }
 
     return (
-        <Layout>
+        <>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-2">{getPageTitle()}</h1>
@@ -355,9 +405,12 @@ export default function Dashboard() {
             ) : (
                 <div className="space-y-10">
 
-                    {/* Render based on View Mode */}
                     {viewMode === 'table' ? (
-                        <PasswordTable items={filteredPasswords} onEdit={(item) => { /* Handle Edit - for now just console log or reuse modal logic later */ console.log("Edit", item); }} />
+                        <PasswordTable
+                            items={filteredPasswords}
+                            onEdit={(item) => setSelectedPassword(item)} // View details on click
+                            onShare={(item) => setShareModal({ isOpen: true, item })}
+                        />
                     ) : (
                         sortedGroups.map(group => (
                             <div key={group}>
@@ -368,7 +421,12 @@ export default function Dashboard() {
                                 </h2>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {groupedPasswords[group].map(item => (
-                                        <PasswordCard key={item.id} item={item} />
+                                        <PasswordCard
+                                            key={item.id}
+                                            item={item}
+                                            onClick={() => setSelectedPassword(item)}
+                                            onShare={() => setShareModal({ isOpen: true, item })}
+                                        />
                                     ))}
                                 </div>
                             </div>
@@ -379,6 +437,17 @@ export default function Dashboard() {
 
             <AddPasswordModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
             <ImportPasswordsModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} />
+            <ShareModal
+                isOpen={shareModal.isOpen}
+                onClose={() => setShareModal({ isOpen: false, item: null })}
+                item={shareModal.item}
+            />
+
+            <PasswordDetailModal
+                isOpen={!!selectedPassword}
+                password={selectedPassword}
+                onClose={() => setSelectedPassword(null)}
+            />
             <BreachCheckModal
                 isOpen={isBreachCheckOpen}
                 onClose={() => setIsBreachCheckOpen(false)}
@@ -386,6 +455,6 @@ export default function Dashboard() {
                     await checkAllPasswordsForBreaches(onProgress);
                 }}
             />
-        </Layout>
+        </>
     );
 }

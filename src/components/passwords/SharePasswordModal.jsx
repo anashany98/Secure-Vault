@@ -1,12 +1,16 @@
 import { X, Share2, Clock, Shield, Users } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useState } from 'react';
 import { usePasswords } from '../../context/PasswordContext';
 import { useAuth } from '../../context/AuthContext';
+import { useGroups } from '../../context/GroupContext';
 
 export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
     const { sharePassword, getPasswordShares, revokeShare } = usePasswords();
     const { usersList } = useAuth();
-    const [selectedUser, setSelectedUser] = useState('');
+    const { groups, getGroupMembers } = useGroups();
+    const [shareType, setShareType] = useState('user'); // 'user' | 'group'
+    const [selectedId, setSelectedId] = useState('');
     const [permission, setPermission] = useState('read');
     const [expiration, setExpiration] = useState('7d');
 
@@ -16,16 +20,26 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
     const availableUsers = usersList.filter(u => u.email !== 'admin@company.com');
 
     const handleShare = () => {
-        if (!selectedUser) {
-            alert('Selecciona un usuario');
+        if (!selectedId) {
+            alert('Selecciona un destinatario');
             return;
         }
 
-        // Check if already shared with this user
-        const existingShare = currentShares.find(s => s.sharedWith === selectedUser);
-        if (existingShare) {
-            alert('Ya has compartido esta contraseña con este usuario');
-            return;
+        const targets = [];
+        if (shareType === 'group') {
+            const members = getGroupMembers(selectedId);
+            members.forEach(m => {
+                if (!currentShares.find(s => s.sharedWith === m.userId)) {
+                    targets.push(m.userId);
+                }
+            });
+        } else {
+            if (!currentShares.find(s => s.sharedWith === selectedId)) {
+                targets.push(selectedId);
+            } else {
+                alert('Ya has compartido esta contraseña con este usuario');
+                return;
+            }
         }
 
         // Calculate expiration in milliseconds
@@ -38,12 +52,18 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
 
         const expiresIn = expirationMap[expiration];
 
-        const result = sharePassword(passwordItem.id, selectedUser, permission, expiresIn);
+        let successCount = 0;
+        targets.forEach(userId => {
+            const result = sharePassword(passwordItem.id, userId, permission, expiresIn);
+            if (result.success) successCount++;
+        });
 
-        if (result.success) {
-            setSelectedUser('');
+        if (successCount > 0) {
+            setSelectedId('');
             setPermission('read');
             setExpiration('7d');
+            if (shareType === 'group') toast.success(`Compartido con ${successCount} miembros`);
+            else toast.success('Contraseña compartida');
         }
     };
 
@@ -92,22 +112,52 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
                         </h3>
 
                         <div className="space-y-4">
-                            {/* User Selection */}
+                            {/* Type Selection */}
+                            <div className="flex gap-2 mb-4">
+                                <button
+                                    onClick={() => setShareType('user')}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${shareType === 'user'
+                                        ? 'bg-primary text-white'
+                                        : 'bg-slate-800 text-slate-400'
+                                        }`}
+                                >
+                                    Usuario
+                                </button>
+                                <button
+                                    onClick={() => setShareType('group')}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${shareType === 'group'
+                                        ? 'bg-primary text-white'
+                                        : 'bg-slate-800 text-slate-400'
+                                        }`}
+                                >
+                                    Grupo
+                                </button>
+                            </div>
+
+                            {/* Recipient Selection */}
                             <div>
                                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                                    Usuario
+                                    {shareType === 'user' ? 'Usuario' : 'Grupo'}
                                 </label>
                                 <select
-                                    value={selectedUser}
-                                    onChange={(e) => setSelectedUser(e.target.value)}
+                                    value={selectedId}
+                                    onChange={(e) => setSelectedId(e.target.value)}
                                     className="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary"
                                 >
-                                    <option value="">Seleccionar usuario...</option>
-                                    {availableUsers.map(user => (
-                                        <option key={user.id} value={user.id}>
-                                            {user.name} ({user.email})
-                                        </option>
-                                    ))}
+                                    <option value="">Seleccionar {shareType === 'user' ? 'usuario' : 'grupo'}...</option>
+                                    {shareType === 'user' ? (
+                                        availableUsers.map(user => (
+                                            <option key={user.id} value={user.id}>
+                                                {user.name} ({user.email})
+                                            </option>
+                                        ))
+                                    ) : (
+                                        groups.map(group => (
+                                            <option key={group.id} value={group.id}>
+                                                {group.name} ({getGroupMembers(group.id).length} miembros)
+                                            </option>
+                                        ))
+                                    )}
                                 </select>
                             </div>
 
@@ -120,8 +170,8 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
                                     <button
                                         onClick={() => setPermission('read')}
                                         className={`p-3 rounded-lg border transition-colors ${permission === 'read'
-                                                ? 'bg-primary/20 border-primary text-primary'
-                                                : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-500'
+                                            ? 'bg-primary/20 border-primary text-primary'
+                                            : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-500'
                                             }`}
                                     >
                                         <Shield className="w-4 h-4 mx-auto mb-1" />
@@ -130,8 +180,8 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
                                     <button
                                         onClick={() => setPermission('write')}
                                         className={`p-3 rounded-lg border transition-colors ${permission === 'write'
-                                                ? 'bg-primary/20 border-primary text-primary'
-                                                : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-500'
+                                            ? 'bg-primary/20 border-primary text-primary'
+                                            : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-500'
                                             }`}
                                     >
                                         <Share2 className="w-4 h-4 mx-auto mb-1" />
@@ -194,8 +244,8 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
                                             </div>
                                             <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
                                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${share.permission === 'write'
-                                                        ? 'bg-blue-500/20 text-blue-400'
-                                                        : 'bg-slate-700 text-slate-300'
+                                                    ? 'bg-blue-500/20 text-blue-400'
+                                                    : 'bg-slate-700 text-slate-300'
                                                     }`}>
                                                     <Shield className="w-3 h-3" />
                                                     {share.permission === 'write' ? 'Puede editar' : 'Solo lectura'}

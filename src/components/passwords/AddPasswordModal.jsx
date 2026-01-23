@@ -1,19 +1,26 @@
 import { useState } from 'react';
 import { X, Save, Lock, Wand2 } from 'lucide-react';
 import { usePasswords } from '../../context/PasswordContext';
+import { useFolders } from '../../context/FolderContext';
 import PasswordGeneratorModal from './PasswordGeneratorModal';
 import TagInput from '../common/TagInput';
+import CustomFieldsInput from '../common/CustomFieldsInput';
 import toast from 'react-hot-toast';
 
 export default function AddPasswordModal({ isOpen, onClose }) {
-    const { addPassword } = usePasswords();
+    const { addPassword, passwords } = usePasswords();
+    const { folders } = useFolders();
     const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
     const [formData, setFormData] = useState({
         title: '',
         username: '',
         password: '',
+        password: '',
         url: '',
-        tags: []
+        notes: '', // Used for "Person/Owner"
+        tags: [],
+        custom_fields: [],
+        folderId: ''
     });
 
     if (!isOpen) return null;
@@ -21,7 +28,7 @@ export default function AddPasswordModal({ isOpen, onClose }) {
     const handleSubmit = (e) => {
         e.preventDefault();
         addPassword(formData);
-        setFormData({ title: '', username: '', password: '', url: '', tags: [] });
+        setFormData({ title: '', username: '', password: '', url: '', notes: '', tags: [], custom_fields: [], folderId: '' });
         toast.success('✅ Contraseña guardada');
         onClose();
     };
@@ -100,11 +107,49 @@ export default function AddPasswordModal({ isOpen, onClose }) {
                         />
                     </div>
 
+                    <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-1">Propietario / Persona</label>
+                        <input
+                            type="text"
+                            list="owners-list"
+                            placeholder="¿A quién pertenece esta cuenta?"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            value={formData.notes}
+                            onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                        />
+                        <datalist id="owners-list">
+                            {[...new Set(passwords.map(p => p.meta_person).filter(Boolean))].sort().map(person => (
+                                <option key={person} value={person} />
+                            ))}
+                        </datalist>
+                    </div>
+
                     {/* Tags Input */}
                     <TagInput
                         tags={formData.tags}
                         onChange={(newTags) => setFormData({ ...formData, tags: newTags })}
                     />
+
+                    {/* Custom Fields */}
+                    <CustomFieldsInput
+                        fields={formData.custom_fields}
+                        onChange={(newFields) => setFormData({ ...formData, custom_fields: newFields })}
+                    />
+
+                    {/* Folder Selection */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-1">Carpeta</label>
+                        <select
+                            value={formData.folderId || ''}
+                            onChange={e => setFormData({ ...formData, folderId: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        >
+                            <option value="">Sin carpeta</option>
+                            {folders.filter(f => f.id !== 'root').map(folder => (
+                                <option key={folder.id} value={folder.id}>{folder.name}</option>
+                            ))}
+                        </select>
+                    </div>
 
                     <div className="flex justify-end gap-3 mt-6">
                         <button

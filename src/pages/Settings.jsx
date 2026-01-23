@@ -1,49 +1,25 @@
 import { useState } from 'react';
 import Layout from '../components/layout/Layout';
-import { User, Plus, Trash2, Shield, Mail, Lock, Activity, Clock, Sun, Moon } from 'lucide-react';
+import { User, Shield, Activity, Clock, Sun, Moon, Upload, RefreshCw, FileJson, Database } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePasswords } from '../context/PasswordContext';
 import { useTheme } from '../context/ThemeContext';
 import ThemeCustomizer from '../components/settings/ThemeCustomizer';
+import ExportVaultModal from '../components/settings/ExportVaultModal';
+import ImportVaultModal from '../components/settings/ImportVaultModal';
+import UsersManager from '../components/settings/UsersManager'; // Import UsersManager
 import toast from 'react-hot-toast';
 
 export default function Settings() {
-    const { usersList, register, deleteUser, user: currentUser } = useAuth();
+    const { user: currentUser } = useAuth(); // Removed unused exports
     const { auditLog } = usePasswords();
     const { theme, toggleTheme, isDark } = useTheme();
-    const [activeTab, setActiveTab] = useState('users'); // 'users', 'activity', 'preferences'
-    const [formData, setFormData] = useState({ name: '', email: '', password: '' });
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [activeTab, setActiveTab] = useState('preferences'); // Default to preferences for non-admins usually, but let's keep logic
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        setError('');
-        setSuccess('');
-
-        if (!formData.name || !formData.email || !formData.password) {
-            setError('Todos los campos son obligatorios');
-            return;
-        }
-
-        const res = register(formData);
-        if (res.success) {
-            setSuccess('Usuario creado correctamente');
-            setFormData({ name: '', email: '', password: '' });
-            setTimeout(() => setSuccess(''), 3000);
-        } else {
-            setError(res.error);
-        }
-    };
-
-    const handleDelete = (id) => {
-        if (window.confirm('¿Estás seguro de eliminar este usuario?')) {
-            const res = deleteUser(id);
-            if (!res.success) {
-                alert(res.error);
-            }
-        }
-    };
+    // Helper for role check
+    const isAdmin = currentUser?.role === 'admin';
 
     const getActionColor = (action) => {
         switch (action) {
@@ -55,7 +31,7 @@ export default function Settings() {
     };
 
     return (
-        <Layout>
+        <div className="max-w-2xl mx-auto">
             <div className="mb-8 flex items-end justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-2">Ajustes del Sistema</h1>
@@ -64,19 +40,21 @@ export default function Settings() {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-4 border-b border-slate-700 mb-8">
-                <button
-                    onClick={() => setActiveTab('users')}
-                    className={`pb - 3 px - 4 text - sm font - bold transition - colors border - b - 2 ${activeTab === 'users' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'} `}
-                >
-                    <div className="flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        Usuarios
-                    </div>
-                </button>
+            <div className="flex gap-4 border-b border-slate-700 mb-8 overflow-x-auto">
+                {isAdmin && (
+                    <button
+                        onClick={() => setActiveTab('users')}
+                        className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'users' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <User className="w-4 h-4" />
+                            Usuarios
+                        </div>
+                    </button>
+                )}
                 <button
                     onClick={() => setActiveTab('activity')}
-                    className={`pb - 3 px - 4 text - sm font - bold transition - colors border - b - 2 ${activeTab === 'activity' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'} `}
+                    className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'activity' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                 >
                     <div className="flex items-center gap-2">
                         <Activity className="w-4 h-4" />
@@ -85,7 +63,7 @@ export default function Settings() {
                 </button>
                 <button
                     onClick={() => setActiveTab('preferences')}
-                    className={`pb - 3 px - 4 text - sm font - bold transition - colors border - b - 2 ${activeTab === 'preferences' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'} `}
+                    className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'preferences' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                 >
                     <div className="flex items-center gap-2">
                         <Shield className="w-4 h-4" />
@@ -94,105 +72,9 @@ export default function Settings() {
                 </button>
             </div>
 
-            {activeTab === 'users' ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    {/* Create User Form */}
-                    <div className="bg-surface border border-slate-700 rounded-2xl p-6">
-                        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                            <Plus className="w-5 h-5 text-primary" />
-                            Crear Nuevo Acceso
-                        </h2>
-
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1.5">Nombre Completo</label>
-                                <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                    <input
-                                        type="text"
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-primary/50"
-                                        placeholder="Ej. Ana García"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1.5">Correo Electrónico</label>
-                                <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                    <input
-                                        type="email"
-                                        value={formData.email}
-                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-primary/50"
-                                        placeholder="ana@empresa.com"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1.5">Contraseña Temporal</label>
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                    <input
-                                        type="password"
-                                        value={formData.password}
-                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-primary/50"
-                                        placeholder="••••••••"
-                                    />
-                                </div>
-                            </div>
-
-                            {error && <p className="text-danger text-sm">{error}</p>}
-                            {success && <p className="text-primary text-sm">{success}</p>}
-
-                            <button
-                                type="submit"
-                                className="w-full bg-primary hover:bg-emerald-600 text-white font-bold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Plus className="w-5 h-5" />
-                                Crear Usuario
-                            </button>
-                        </form>
-                    </div>
-
-                    {/* User List */}
-                    <div className="bg-surface border border-slate-700 rounded-2xl p-6">
-                        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                            <Shield className="w-5 h-5 text-secondary" />
-                            Usuarios Activos
-                        </h2>
-
-                        <div className="space-y-4">
-                            {usersList.map(user => (
-                                <div key={user.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between group hover:border-slate-700 transition-colors">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w - 10 h - 10 rounded - full flex items - center justify - center font - bold text - lg ${user.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-slate-800 text-slate-400'} `}>
-                                            {user.name.charAt(0).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <p className="text-white font-medium flex items-center gap-2">
-                                                {user.name}
-                                                {user.id === currentUser?.id && <span className="text-[10px] bg-slate-700 px-1.5 rounded text-slate-300">TÚ</span>}
-                                            </p>
-                                            <p className="text-sm text-slate-500">{user.email}</p>
-                                        </div>
-                                    </div>
-
-                                    {user.role !== 'admin' && (
-                                        <button
-                                            onClick={() => handleDelete(user.id)}
-                                            className="p-2 text-slate-500 hover:text-danger hover:bg-danger/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                            title="Eliminar usuario"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+            {activeTab === 'users' && isAdmin ? (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <UsersManager />
                 </div>
             ) : activeTab === 'preferences' ? (
                 <div className="space-y-6">
@@ -264,6 +146,49 @@ export default function Settings() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Data Management */}
+                    <div className="bg-surface border border-slate-700 rounded-2xl p-6">
+                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <Database className="w-5 h-5 text-primary" />
+                            Gestión de Datos
+                        </h3>
+                        <p className="text-sm text-slate-400 mb-6">
+                            Exporta tu información para tener una copia de seguridad segura o restaura una copia previa.
+                        </p>
+
+                        <div className="space-y-4">
+                            {/* Export */}
+                            <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                                <div>
+                                    <p className="text-white font-medium">Exportar Copia de Seguridad</p>
+                                    <p className="text-sm text-slate-500">Descarga un archivo encriptado .json</p>
+                                </div>
+                                <button
+                                    onClick={() => setIsExportModalOpen(true)}
+                                    className="flex items-center gap-2 text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-700 hover:border-slate-600"
+                                >
+                                    <Upload className="w-4 h-4 rotate-180" />
+                                    Exportar
+                                </button>
+                            </div>
+
+                            {/* Restore */}
+                            <div className="flex items-center justify-between p-4 bg-red-900/10 rounded-xl border border-red-900/20">
+                                <div>
+                                    <p className="text-white font-medium">Restaurar Copia de Seguridad</p>
+                                    <p className="text-sm text-slate-500">IMPORTANTE: Sobrescribe todos los datos actuales</p>
+                                </div>
+                                <button
+                                    onClick={() => setIsRestoreModalOpen(true)}
+                                    className="flex items-center gap-2 text-red-100 bg-red-900/50 hover:bg-red-900/80 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-red-500/30"
+                                >
+                                    <RefreshCw className="w-4 h-4" />
+                                    Restaurar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             ) : (
                 <div className="bg-surface border border-slate-700 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -323,6 +248,8 @@ export default function Settings() {
                 </div>
             )
             }
-        </Layout >
+            <ExportVaultModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} />
+            <ImportVaultModal isOpen={isRestoreModalOpen} onClose={() => setIsRestoreModalOpen(false)} />
+        </div>
     );
 }

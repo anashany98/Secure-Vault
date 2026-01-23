@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 
 import { cn } from '../../lib/utils';
 
-export default function PasswordCard({ item }) {
+export default function PasswordCard({ item, onClick, onShare }) {
     const [showPassword, setShowPassword] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [isShareOpen, setIsShareOpen] = useState(false);
@@ -87,7 +87,7 @@ export default function PasswordCard({ item }) {
                             <Edit className="w-4 h-4" />
                         </button>
                         <button
-                            onClick={() => setIsShareOpen(true)}
+                            onClick={onShare ? onShare : () => setIsShareOpen(true)}
                             className="text-slate-500 hover:text-primary p-1 rounded-lg hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100 relative"
                             title="Compartir"
                         >

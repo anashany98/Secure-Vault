@@ -1,18 +1,31 @@
-import { X, RotateCcw, Clock, User } from 'lucide-react';
+import { X, RotateCcw, Clock, User, RefreshCw } from 'lucide-react';
 import { usePasswords } from '../../context/PasswordContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function PasswordHistoryModal({ isOpen, onClose, passwordItem }) {
-    const { restorePasswordVersion } = usePasswords();
+    const { getPasswordHistory, updatePassword } = usePasswords();
+    const [history, setHistory] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
     const [showPasswords, setShowPasswords] = useState({});
+
+    useEffect(() => {
+        if (isOpen && passwordItem) {
+            fetchHistory();
+        }
+    }, [isOpen, passwordItem]);
+
+    const fetchHistory = async () => {
+        setIsLoading(true);
+        const data = await getPasswordHistory(passwordItem.id);
+        setHistory(data);
+        setIsLoading(false);
+    };
 
     if (!isOpen || !passwordItem) return null;
 
-    const history = passwordItem.history || [];
-
-    const handleRestore = (versionIndex) => {
-        if (window.confirm(`¿Restaurar esta versión de la contraseña?\n\nEsto guardará la versión actual en el historial.`)) {
-            restorePasswordVersion(passwordItem.id, versionIndex);
+    const handleRestore = (version) => {
+        if (window.confirm(`¿Restaurar esta versión de la contraseña?\n\nLa versión actual se guardará en el historial.`)) {
+            updatePassword(passwordItem.id, { password: version.password });
             onClose();
         }
     };
@@ -50,7 +63,12 @@ export default function PasswordHistoryModal({ isOpen, onClose, passwordItem }) 
 
                 {/* Content */}
                 <div className="p-6 overflow-y-auto flex-1">
-                    {history.length === 0 ? (
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center py-12">
+                            <RefreshCw className="w-8 h-8 text-primary animate-spin mb-4" />
+                            <p className="text-slate-400">Cargando historial...</p>
+                        </div>
+                    ) : history.length === 0 ? (
                         <div className="text-center py-12">
                             <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
                                 <Clock className="w-8 h-8 text-slate-600" />
@@ -93,18 +111,18 @@ export default function PasswordHistoryModal({ isOpen, onClose, passwordItem }) 
                             {/* Previous Versions */}
                             {history.map((version, index) => (
                                 <div
-                                    key={index}
+                                    key={version.id || index}
                                     className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 hover:border-slate-600 transition-colors group"
                                 >
                                     <div className="flex items-start justify-between mb-3">
                                         <div className="flex items-center gap-2">
                                             <Clock className="w-4 h-4 text-slate-500" />
                                             <span className="text-slate-300 font-medium text-sm">
-                                                Versión #{history.length - index}
+                                                Versión de {new Date(version.changed_at).toLocaleDateString()}
                                             </span>
                                         </div>
                                         <button
-                                            onClick={() => handleRestore(index)}
+                                            onClick={() => handleRestore(version)}
                                             className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 rounded-lg hover:bg-blue-400/10"
                                         >
                                             <RotateCcw className="w-3.5 h-3.5" />
@@ -114,12 +132,9 @@ export default function PasswordHistoryModal({ isOpen, onClose, passwordItem }) 
 
                                     <div className="grid grid-cols-2 gap-3 text-sm mb-3">
                                         <div>
-                                            <span className="text-slate-500 block mb-1">Usuario:</span>
-                                            <span className="text-slate-300 font-mono">{version.username}</span>
-                                        </div>
-                                        <div>
                                             <span className="text-slate-500 block mb-1">Contraseña:</span>
                                             <button
+                                                type="button"
                                                 onClick={() => togglePasswordVisibility(index)}
                                                 className="text-slate-300 font-mono hover:text-white"
                                             >
@@ -131,11 +146,7 @@ export default function PasswordHistoryModal({ isOpen, onClose, passwordItem }) 
                                     <div className="flex items-center gap-4 text-xs text-slate-500">
                                         <div className="flex items-center gap-1">
                                             <Clock className="w-3 h-3" />
-                                            {new Date(version.changedAt).toLocaleString()}
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <User className="w-3 h-3" />
-                                            {version.changedBy}
+                                            {new Date(version.changed_at).toLocaleString()}
                                         </div>
                                     </div>
                                 </div>

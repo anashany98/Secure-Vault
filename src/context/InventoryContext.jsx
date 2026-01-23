@@ -1,76 +1,126 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import CryptoJS from 'crypto-js';
+import { useAuth } from './AuthContext';
+import { api } from '../lib/api';
+import toast from 'react-hot-toast';
 
 const InventoryContext = createContext();
 
 export const useInventory = () => useContext(InventoryContext);
 
-const INVENTORY_KEY = 'secure_vault_inventory';
-const ENCRYPTION_KEY = 'demo-secret-key-change-this-in-prod'; // Use same security model
-
 export const InventoryProvider = ({ children }) => {
-    const [items, setItems] = useState(() => {
-        const stored = localStorage.getItem(INVENTORY_KEY);
-        if (stored) {
-            try {
-                const bytes = CryptoJS.AES.decrypt(stored, ENCRYPTION_KEY);
-                return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
-            } catch (e) {
-                console.error("Failed to decrypt inventory data", e);
-                return [];
-            }
-        }
-        return [];
-    });
+    const { user } = useAuth();
+    const [items, setItems] = useState([]);
 
     useEffect(() => {
-        const encrypted = CryptoJS.AES.encrypt(JSON.stringify(items), ENCRYPTION_KEY).toString();
-        localStorage.setItem(INVENTORY_KEY, encrypted);
-    }, [items]);
-
-    const addItem = (newItem) => {
-        setItems(prev => [
-            {
-                id: crypto.randomUUID(),
-                createdAt: Date.now(),
-                ...newItem
-            },
-            ...prev
-        ]);
-    };
-
-    const deleteItem = (id) => {
-        setItems(prev => prev.filter(item => item.id !== id));
-    };
-
-    const updateItem = (id, updates) => {
-        setItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
-    };
-
-    const addHistoryEvent = (id, event) => {
-        setItems(prev => prev.map(item => {
-            if (item.id === id) {
-                const newHistory = [
-                    {
-                        id: crypto.randomUUID(),
-                        date: Date.now(),
-                        ...event
-                    },
-                    ...(item.history || [])
-                ];
-                return { ...item, history: newHistory };
+        if (!user) {
+            setItems([]);
+            return;
+        }
+        const fetchInventory = async () => {
+            try {
+                const data = await api.get('/inventory');
+                setItems(data);
+            } catch (err) {
+                console.warn("API Inventory failed, falling back to LocalStorage", err);
+                const localData = localStorage.getItem(`inventory_${user.email}`);
+                if (localData) {
+                    setItems(JSON.parse(localData));
+                } else {
+                    setItems([]);
+                }
             }
-            return item;
-        }));
+        };
+        fetchInventory();
+    }, [user]);
+
+    const saveToLocal = (newItems) => {
+        if (user?.email) {
+            localStorage.setItem(`inventory_${user.email}`, JSON.stringify(newItems));
+        }
+    };
+
+    const addItem = async (newItem) => {
+        const tempId = Date.now().toString();
+        const itemWithId = { ...newItem, id: tempId, isDeleted: false };
+        try {
+            const savedItem = await api.post('/inventory', newItem);
+            setItems(prev => [...prev, savedItem]);
+            toast.success('Ítem añadido');
+        } catch (err) {
+            setItems(prev => {
+                const newState = [...prev, itemWithId];
+                saveToLocal(newState);
+                return newState;
+            });
+            toast.success('Ítem añadido (Offline)');
+        }
+    };
+
+    const updateItem = async (id, updates) => {
+        try {
+            if (id.toString().length < 15) {
+                const updatedItem = await api.put(`/inventory/${id}`, updates);
+                setItems(prev => prev.map(i => i.id === id ? updatedItem : i));
+            } else {
+                throw new Error("Offline ID");
+            }
+            toast.success('Ítem actualizado');
+        } catch (err) {
+            setItems(prev => {
+                const newState = prev.map(i => i.id === id ? { ...i, ...updates } : i);
+                saveToLocal(newState);
+                return newState;
+            });
+            toast.success('Ítem actualizado (Offline)');
+        }
+    };
+
+    const deleteItem = async (id) => {
+        try {
+            if (id.toString().length < 15) {
+                await api.delete(`/inventory/${id}`);
+            } else {
+                throw new Error("Offline ID");
+            }
+            // Soft delete simulation
+            setItems(prev => prev.map(i => i.id === id ? { ...i, isDeleted: true, deletedAt: new Date().toISOString() } : i));
+            toast.success('Ítem eliminado');
+        } catch (err) {
+            setItems(prev => {
+                const newState = prev.map(i => i.id === id ? { ...i, isDeleted: true, deletedAt: new Date().toISOString() } : i);
+                saveToLocal(newState);
+                return newState;
+            });
+            toast.success('Ítem eliminado (Offline)');
+        }
+    };
+
+    const restoreItem = (id) => {
+        setItems(prev => {
+            const newState = prev.map(i => i.id === id ? { ...i, isDeleted: false, deletedAt: null } : i);
+            saveToLocal(newState);
+            return newState;
+        });
+        toast.success('Ítem restaurado');
+    };
+
+    const permanentlyDeleteItem = (id) => {
+        setItems(prev => {
+            const newState = prev.filter(i => i.id !== id);
+            saveToLocal(newState);
+            return newState;
+        });
+        toast.success('Ítem eliminado permanentemente');
     };
 
     return (
         <InventoryContext.Provider value={{
             items,
             addItem,
-            deleteItem,
             updateItem,
-            addHistoryEvent
+            deleteItem,
+            restoreItem,
+            permanentlyDeleteItem
         }}>
             {children}
         </InventoryContext.Provider>

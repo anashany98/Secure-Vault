@@ -4,7 +4,7 @@ import { FileText, Download, Filter, Calendar, User, Activity } from 'lucide-rea
 import { usePasswords } from '../context/PasswordContext';
 
 export default function AuditLog() {
-    const { auditLog } = usePasswords();
+    const { auditLogs } = usePasswords();
     const [filter, setFilter] = useState({
         action: 'all',
         dateFrom: '',
@@ -13,21 +13,22 @@ export default function AuditLog() {
     });
 
     const filteredLogs = useMemo(() => {
-        return auditLog.filter(log => {
+        return auditLogs.filter(log => {
             if (filter.action !== 'all' && log.action !== filter.action) return false;
             if (filter.search && !JSON.stringify(log).toLowerCase().includes(filter.search.toLowerCase())) return false;
-            if (filter.dateFrom && log.timestamp < new Date(filter.dateFrom).getTime()) return false;
-            if (filter.dateTo && log.timestamp > new Date(filter.dateTo).getTime()) return false;
+            const logTime = new Date(log.created_at).getTime();
+            if (filter.dateFrom && logTime < new Date(filter.dateFrom).getTime()) return false;
+            if (filter.dateTo && logTime > new Date(filter.dateTo).getTime()) return false;
             return true;
-        }).reverse(); // Most recent first
-    }, [auditLog, filter]);
+        }); // Backend already sorts DESC
+    }, [auditLogs, filter]);
 
     const exportToCSV = () => {
         const headers = ['Fecha', 'Acción', 'Usuario', 'Detalles'];
         const rows = filteredLogs.map(log => [
-            new Date(log.timestamp).toLocaleString('es-ES'),
+            new Date(log.created_at).toLocaleString('es-ES'),
             log.action,
-            log.user || 'Sistema',
+            log.user_id || 'Sistema',
             log.details || ''
         ]);
 
@@ -152,7 +153,7 @@ export default function AuditLog() {
                                 filteredLogs.map((log, index) => (
                                     <tr key={index} className="hover:bg-slate-800/30">
                                         <td className="px-4 py-3 text-sm text-slate-400">
-                                            {new Date(log.timestamp).toLocaleString('es-ES')}
+                                            {new Date(log.created_at).toLocaleString('es-ES')}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`inline-flex px-2 py-1 rounded text-xs font-medium border ${actionColors[log.action] || 'bg-slate-500/20 text-slate-400 border-slate-500/50'}`}>
@@ -161,7 +162,7 @@ export default function AuditLog() {
                                         </td>
                                         <td className="px-4 py-3 text-sm text-white flex items-center gap-2">
                                             <User className="w-4 h-4 text-slate-500" />
-                                            {log.user || 'Sistema'}
+                                            {log.user_id ? 'Usuario' : 'Sistema'}
                                         </td>
                                         <td className="px-4 py-3 text-sm text-slate-400">
                                             {log.details || '-'}

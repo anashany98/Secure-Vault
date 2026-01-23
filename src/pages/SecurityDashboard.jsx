@@ -6,7 +6,7 @@ import { calculateCrackTime } from '../lib/passwordSecurity';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 export default function SecurityDashboard() {
-    const { passwords } = usePasswords();
+    const { passwords, auditLogs } = usePasswords();
 
     // Security Analysis
     const analysis = useMemo(() => {
@@ -220,6 +220,31 @@ export default function SecurityDashboard() {
                             <p>¡No hay contraseñas débiles!</p>
                         </div>
                     )}
+                </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="mt-6 bg-surface border border-slate-700 rounded-xl p-6">
+                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-primary" />
+                    Actividad Reciente
+                </h2>
+                <div className="space-y-4">
+                    {auditLogs.slice(0, 5).map((log, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-slate-800/20 rounded-lg border border-slate-700/50">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-2 h-2 rounded-full ${log.action.includes('CREATE') ? 'bg-green-500' :
+                                    log.action.includes('DELETE') ? 'bg-red-500' : 'bg-blue-500'
+                                    }`} />
+                                <div>
+                                    <p className="text-sm text-white font-medium">{log.details || log.action}</p>
+                                    <p className="text-xs text-slate-500">{new Date(log.created_at).toLocaleString()}</p>
+                                </div>
+                            </div>
+                            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">{log.entity_type}</span>
+                        </div>
+                    ))}
+                    {auditLogs.length === 0 && <p className="text-center text-slate-500 py-4">No hay actividad reciente</p>}
                 </div>
             </div>
         </Layout>

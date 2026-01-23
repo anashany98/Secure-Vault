@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { X, Eye, EyeOff, Wand2 } from 'lucide-react';
 import { usePasswords } from '../../context/PasswordContext';
+import { useFolders } from '../../context/FolderContext';
 import PasswordGeneratorModal from './PasswordGeneratorModal';
 import TagInput from '../common/TagInput';
+import CustomFieldsInput from '../common/CustomFieldsInput';
 import toast from 'react-hot-toast';
-
 export default function EditPasswordModal({ isOpen, onClose, password }) {
     const { updatePassword } = usePasswords();
+    const { folders } = useFolders(); // Get folders
     const [showPassword, setShowPassword] = useState(false);
     const [showGeneratorModal, setShowGeneratorModal] = useState(false);
     const [formData, setFormData] = useState({
@@ -15,7 +17,9 @@ export default function EditPasswordModal({ isOpen, onClose, password }) {
         password: '',
         url: '',
         notes: '',
-        tags: []
+        tags: [],
+        custom_fields: [],
+        folderId: ''
     });
 
     useEffect(() => {
@@ -26,7 +30,9 @@ export default function EditPasswordModal({ isOpen, onClose, password }) {
                 password: password.password || '',
                 url: password.url || '',
                 notes: password.notes || '',
-                tags: password.tags || []
+                tags: password.tags || [],
+                custom_fields: password.custom_fields || [],
+                folderId: password.folderId || ''
             });
         }
     }, [password]);
@@ -154,6 +160,29 @@ export default function EditPasswordModal({ isOpen, onClose, password }) {
                             />
                         </div>
 
+                        {/* Custom Fields */}
+                        <CustomFieldsInput
+                            fields={formData.custom_fields}
+                            onChange={(newFields) => setFormData({ ...formData, custom_fields: newFields })}
+                        />
+
+                        {/* Folder Selection */}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                                Carpeta
+                            </label>
+                            <select
+                                value={formData.folderId}
+                                onChange={e => setFormData({ ...formData, folderId: e.target.value })}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            >
+                                <option value="">Sin carpeta</option>
+                                {folders.filter(f => f.id !== 'root').map(folder => (
+                                    <option key={folder.id} value={folder.id}>{folder.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         {/* Notes */}
                         <div>
                             <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -185,13 +214,14 @@ export default function EditPasswordModal({ isOpen, onClose, password }) {
                             </button>
                         </div>
                     </form>
-                </div>
-            </div>
+                </div >
+            </div >
 
             {/* Password Generator Modal */}
-            <PasswordGeneratorModal
+            < PasswordGeneratorModal
                 isOpen={showGeneratorModal}
-                onClose={() => setShowGeneratorModal(false)}
+                onClose={() => setShowGeneratorModal(false)
+                }
                 onGenerate={handleGeneratedPassword}
             />
         </>

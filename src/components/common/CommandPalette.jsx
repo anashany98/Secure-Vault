@@ -17,7 +17,7 @@ export default function CommandPalette({ isOpen, onClose }) {
     const fuse = useMemo(() => {
         const activePasswords = passwords.filter(p => !p.isDeleted);
         return new Fuse(activePasswords, {
-            keys: ['title', 'username', 'url', 'person'],
+            keys: ['title', 'username', 'url', 'person', 'tags'],
             threshold: 0.4,
             includeScore: true
         });
@@ -150,8 +150,8 @@ export default function CommandPalette({ isOpen, onClose }) {
                                     key={password.id}
                                     onClick={() => handleSelect(index)}
                                     className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors text-left ${selectedIndex === index
-                                            ? 'bg-primary/20 text-white'
-                                            : 'text-slate-300 hover:bg-slate-800'
+                                        ? 'bg-primary/20 text-white'
+                                        : 'text-slate-300 hover:bg-slate-800'
                                         }`}
                                 >
                                     <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-lg font-bold text-white">
@@ -189,8 +189,8 @@ export default function CommandPalette({ isOpen, onClose }) {
                                         key={action.id}
                                         onClick={() => handleSelect(actualIndex)}
                                         className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors text-left ${selectedIndex === actualIndex
-                                                ? 'bg-primary/20 text-white'
-                                                : 'text-slate-300 hover:bg-slate-800'
+                                            ? 'bg-primary/20 text-white'
+                                            : 'text-slate-300 hover:bg-slate-800'
                                             }`}
                                     >
                                         <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center">

@@ -40,6 +40,10 @@ export const FolderProvider = ({ children }) => {
         setFolders(folders.filter(f => f.id !== id && f.parentId !== id));
     };
 
+    const renameFolder = (id, newName) => {
+        setFolders(folders.map(f => f.id === id ? { ...f, name: newName } : f));
+    };
+
     const getFolderPath = (folderId) => {
         const path = [];
         let current = folders.find(f => f.id === folderId);
@@ -60,6 +64,7 @@ export const FolderProvider = ({ children }) => {
             addFolder,
             updateFolder,
             deleteFolder,
+            renameFolder,
             getFolderPath,
             getSubfolders
         }}>

@@ -2,331 +2,287 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import CryptoJS from 'crypto-js';
 import { useAuth } from './AuthContext';
 import { useUsage } from './UsageContext';
-import { checkPasswordBreach } from '../lib/breachDetection';
+import { api } from '../lib/api';
+import toast from 'react-hot-toast';
 
 const PasswordContext = createContext();
 
 export const usePasswords = () => useContext(PasswordContext);
 
-const ENCRYPTION_KEY = 'demo-secret-key-change-this-in-prod';
-const AUDIT_KEY = 'secure_vault_audit_log';
-const SHARES_KEY = 'secure_vault_shares';
+const ENCRYPTION_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'fallback-dev-key';
 
 export const PasswordProvider = ({ children }) => {
-    const { user } = useAuth(); // Access current user for logging
+    const { user } = useAuth();
     const { trackCreate, trackDelete } = useUsage();
+    const [passwords, setPasswords] = useState([]);
+    const [auditLogs, setAuditLogs] = useState([]);
 
-    const [passwords, setPasswords] = useState(() => {
-        const stored = localStorage.getItem('secure_vault_items');
-        if (stored) {
-            try {
-                const bytes = CryptoJS.AES.decrypt(stored, ENCRYPTION_KEY);
-                return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
-            } catch (e) {
-                console.error("Failed to decrypt data", e);
-                return [];
-            }
-        }
-        return [];
-    });
-
-    const [auditLog, setAuditLog] = useState(() => {
-        const stored = localStorage.getItem(AUDIT_KEY);
-        return stored ? JSON.parse(stored) : [];
-    });
-
-    const [shares, setShares] = useState(() => {
-        const stored = localStorage.getItem(SHARES_KEY);
-        return stored ? JSON.parse(stored) : [];
-    });
-
+    // Fetch passwords on mount or user change
     useEffect(() => {
-        const encrypted = CryptoJS.AES.encrypt(JSON.stringify(passwords), ENCRYPTION_KEY).toString();
-        localStorage.setItem('secure_vault_items', encrypted);
-    }, [passwords]);
-
-    useEffect(() => {
-        localStorage.setItem(AUDIT_KEY, JSON.stringify(auditLog));
-    }, [auditLog]);
-
-    useEffect(() => {
-        localStorage.setItem(SHARES_KEY, JSON.stringify(shares));
-    }, [shares]);
-
-    const logAction = (action, targetTitle, details = '') => {
-        const newEntry = {
-            id: crypto.randomUUID(),
-            timestamp: Date.now(),
-            action, // 'CREATE', 'UPDATE', 'DELETE', 'RESTORE'
-            user: user ? user.name : 'Unknown', // Log who did it
-            target: targetTitle,
-            details
-        };
-        setAuditLog(prev => [newEntry, ...prev]);
-    };
-
-    const addPassword = (newPassword) => {
-        setPasswords(prev => [
-            {
-                id: crypto.randomUUID(),
-                createdAt: Date.now(),
-                isFavorite: false,
-                isDeleted: false,
-                ...newPassword
-            },
-            ...prev
-        ]);
-        logAction('CREATE', newPassword.title, `Usuario: ${newPassword.username}`);
-        trackCreate(); // Track password creation
-    };
-
-    const bulkAddPasswords = (newPasswords) => {
-        if (!Array.isArray(newPasswords) || newPasswords.length === 0) return;
-
-        const formattedPasswords = newPasswords.map(p => ({
-            id: crypto.randomUUID(),
-            createdAt: Date.now(),
-            isFavorite: false,
-            isDeleted: false,
-            title: p.title || 'Untitled',
-            username: p.username || '',
-            password: p.password || '',
-            url: p.url || '',
-            meta_person: p.meta_person || ''
-        }));
-
-        setPasswords(prev => [...formattedPasswords, ...prev]);
-        logAction('IMPORT', 'Importación Masiva', `${newPasswords.length} items importados`);
-    };
-
-    const deletePassword = (id) => {
-        const target = passwords.find(p => p.id === id);
-        setPasswords(prev => prev.map(p => p.id === id ? { ...p, isDeleted: true } : p));
-        if (target) logAction('DELETE', target.title, 'Movido a papelera');
-        trackDelete(); // Track password deletion
-    };
-
-    const restorePassword = (id) => {
-        const target = passwords.find(p => p.id === id);
-        setPasswords(prev => prev.map(p => p.id === id ? { ...p, isDeleted: false } : p));
-        if (target) logAction('RESTORE', target.title, 'Restaurado de papelera');
-    };
-
-    const permanentlyDeletePassword = (id) => {
-        const target = passwords.find(p => p.id === id);
-        setPasswords(prev => prev.filter(p => p.id !== id));
-        if (target) logAction('PERMANENT_DELETE', target.title, 'Eliminado definitivamente');
-    };
-
-    const toggleFavorite = (id) => {
-        // No logging for favorites to avoid spam
-        setPasswords(prev => prev.map(p => p.id === id ? { ...p, isFavorite: !p.isFavorite } : p));
-    };
-
-    const updatePassword = (id, updates) => {
-        const target = passwords.find(p => p.id === id);
-
-        if (!target) return;
-
-        // Store previous version in history
-        const previousVersion = {
-            password: target.password,
-            username: target.username,
-            title: target.title,
-            url: target.url,
-            changedAt: Date.now(),
-            changedBy: user ? user.name : 'Unknown'
-        };
-
-        // Initialize history if it doesn't exist
-        const currentHistory = target.history || [];
-
-        // Add previous version to history (limit to 10)
-        const newHistory = [previousVersion, ...currentHistory].slice(0, 10);
-
-        setPasswords(prev => prev.map(p =>
-            p.id === id
-                ? { ...p, ...updates, history: newHistory, updatedAt: Date.now() }
-                : p
-        ));
-
-        logAction('UPDATE', updates.title || target.title, 'Detalles modificados');
-    };
-
-    const restorePasswordVersion = (id, versionIndex) => {
-        const target = passwords.find(p => p.id === id);
-
-        if (!target || !target.history || !target.history[versionIndex]) {
-            console.error('Version not found');
+        if (!user) {
+            setPasswords([]);
             return;
         }
 
-        const versionToRestore = target.history[versionIndex];
+        const fetchPasswords = async () => {
+            try {
+                const items = await api.get('/vault');
+                const decrypted = items.map(item => {
+                    try {
+                        const bytes = CryptoJS.AES.decrypt(item.encrypted_password, ENCRYPTION_KEY);
+                        const originalPassword = bytes.toString(CryptoJS.enc.Utf8);
 
-        // Store current state before restoring
-        const currentVersion = {
-            password: target.password,
-            username: target.username,
-            title: target.title,
-            url: target.url,
-            changedAt: Date.now(),
-            changedBy: user ? user.name : 'Unknown'
-        };
+                        // Decrypt custom fields
+                        let decryptedFields = [];
+                        if (item.custom_fields && Array.isArray(item.custom_fields)) {
+                            decryptedFields = item.custom_fields.map(f => {
+                                try {
+                                    const fb = CryptoJS.AES.decrypt(f.value, ENCRYPTION_KEY);
+                                    return { ...f, value: fb.toString(CryptoJS.enc.Utf8) };
+                                } catch (e) { return f; }
+                            });
+                        }
 
-        // Create new history without the restored version, but add current state
-        const newHistory = [
-            currentVersion,
-            ...target.history.filter((_, idx) => idx !== versionIndex)
-        ].slice(0, 10);
-
-        setPasswords(prev => prev.map(p =>
-            p.id === id
-                ? {
-                    ...p,
-                    password: versionToRestore.password,
-                    username: versionToRestore.username,
-                    title: versionToRestore.title,
-                    url: versionToRestore.url,
-                    history: newHistory,
-                    updatedAt: Date.now()
-                }
-                : p
-        ));
-
-        logAction('RESTORE_VERSION', target.title, `Versión restaurada de ${new Date(versionToRestore.changedAt).toLocaleString()}`);
-    };
-
-    // ===== PASSWORD SHARING FUNCTIONS =====
-
-    const sharePassword = (passwordId, sharedWithUserId, permission = 'read', expiresIn = null) => {
-        const password = passwords.find(p => p.id === passwordId);
-        if (!password) {
-            console.error('Password not found');
-            return { success: false, error: 'Contraseña no encontrada' };
-        }
-
-        // Calculate expiration
-        let expiresAt = null;
-        if (expiresIn) {
-            expiresAt = Date.now() + expiresIn;
-        }
-
-        const newShare = {
-            id: crypto.randomUUID(),
-            passwordId,
-            sharedBy: user?.id || 'unknown',
-            sharedWith: sharedWithUserId,
-            permission, // 'read' | 'write'
-            expiresAt,
-            createdAt: Date.now(),
-            lastAccessedAt: null
-        };
-
-        setShares(prev => [...prev, newShare]);
-        logAction('SHARE', password.title, `Compartido con usuario ${sharedWithUserId}`);
-
-        return { success: true, share: newShare };
-    };
-
-    const revokeShare = (shareId) => {
-        const share = shares.find(s => s.id === shareId);
-        if (share) {
-            const password = passwords.find(p => p.id === share.passwordId);
-            setShares(prev => prev.filter(s => s.id !== shareId));
-            if (password) {
-                logAction('UNSHARE', password.title, 'Acceso compartido revocado');
-            }
-        }
-    };
-
-    const getPasswordShares = (passwordId) => {
-        return shares.filter(s => s.passwordId === passwordId && (!s.expiresAt || s.expiresAt > Date.now()));
-    };
-
-    const getSharedPasswords = () => {
-        if (!user) return [];
-
-        // Get shares where current user is the recipient
-        const userShares = shares.filter(s =>
-            s.sharedWith === user.id &&
-            (!s.expiresAt || s.expiresAt > Date.now())
-        );
-
-        // Get the actual passwords
-        return userShares.map(share => {
-            const password = passwords.find(p => p.id === share.passwordId);
-            return password ? { ...password, share } : null;
-        }).filter(Boolean);
-    };
-
-    const updateShareAccess = (shareId) => {
-        setShares(prev => prev.map(s =>
-            s.id === shareId
-                ? { ...s, lastAccessedAt: Date.now() }
-                : s
-        ));
-    };
-
-    // ===== BREACH DETECTION =====
-
-    const checkPasswordForBreach = async (passwordId) => {
-        const password = passwords.find(p => p.id === passwordId);
-        if (!password) return;
-
-        const result = await checkPasswordBreach(password.password);
-
-        if (!result.error) {
-            setPasswords(prev => prev.map(p =>
-                p.id === passwordId
-                    ? { ...p, breachCount: result.count, lastBreachCheck: Date.now() }
-                    : p
-            ));
-        }
-
-        return result;
-    };
-
-    const checkAllPasswordsForBreaches = async (onProgress = null) => {
-        const activePasswords = passwords.filter(p => !p.isDeleted);
-        const total = activePasswords.length;
-        let checked = 0;
-
-        for (const password of activePasswords) {
-            await checkPasswordForBreach(password.id);
-            checked++;
-
-            if (onProgress) {
-                onProgress({
-                    current: checked,
-                    total,
-                    percentage: (checked / total) * 100
+                        return { ...item, password: originalPassword, custom_fields: decryptedFields };
+                    } catch (e) {
+                        console.error("Decryption failed for item", item.id);
+                        return { ...item, password: 'ERROR' };
+                    }
                 });
+                setPasswords(decrypted);
+            } catch (err) {
+                console.warn("API Vault failed, falling back to LocalStorage", err);
+                const localData = localStorage.getItem(`vault_${user.email}`);
+                if (localData) {
+                    setPasswords(JSON.parse(localData));
+                    if (passwords.length === 0) toast('Modo Offline: Usando datos locales', { icon: '📂' });
+                } else {
+                    setPasswords([]);
+                }
             }
+        };
+
+        const fetchAuditLogs = async () => {
+            try {
+                const logs = await api.get('/api/audit'); // Wait, api.js might already prepend /api
+                // Let's check api.js
+                const items = await api.get('/audit');
+                setAuditLogs(items);
+            } catch (err) {
+                console.error("Fetch audit logs failed", err);
+            }
+        };
+
+        fetchPasswords();
+        fetchAuditLogs();
+    }, [user]);
+
+    // Helper to persist to local storage for offline capability
+    // We only update local storage as a cache, source of truth is backend
+    const syncToLocal = (data) => {
+        if (user?.email) {
+            localStorage.setItem(`vault_${user.email}`, JSON.stringify(data));
+        }
+    }
+
+    const addPassword = async (newPassword) => {
+        try {
+            const encrypted = CryptoJS.AES.encrypt(newPassword.password, ENCRYPTION_KEY).toString();
+
+            // Encrypt custom fields
+            const encryptedCustomFields = newPassword.custom_fields ? newPassword.custom_fields.map(f => ({
+                ...f,
+                value: CryptoJS.AES.encrypt(f.value, ENCRYPTION_KEY).toString()
+            })) : [];
+
+            const payload = {
+                title: newPassword.title,
+                username: newPassword.username,
+                encrypted_password: encrypted,
+                url: newPassword.website || newPassword.url,
+                meta_person: newPassword.notes,
+                is_favorite: newPassword.isFavorite || false,
+                tags: newPassword.tags || [],
+                custom_fields: JSON.stringify(encryptedCustomFields)
+            };
+
+            const savedItem = await api.post('/vault', payload);
+            setPasswords(prev => {
+                const newState = [{ ...savedItem, password: newPassword.password, custom_fields: newPassword.custom_fields }, ...prev];
+                syncToLocal(newState);
+                return newState;
+            });
+            trackCreate();
+            toast.success('Contraseña guardada');
+        } catch (err) {
+            console.error("API Add failed", err);
+            toast.error('Error al guardar. Verifica tu conexión.');
         }
     };
+
+    const updatePassword = async (id, updates) => {
+        try {
+            const current = passwords.find(p => p.id === id);
+            if (!current) return;
+
+            const merged = { ...current, ...updates };
+            const passwordToEncrypt = updates.password !== undefined ? updates.password : current.password;
+
+            const encrypted = CryptoJS.AES.encrypt(passwordToEncrypt, ENCRYPTION_KEY).toString();
+
+            // Encrypt custom fields if updated
+            let processedCustomFields = current.custom_fields; // Default to existing
+            if (updates.custom_fields) {
+                processedCustomFields = updates.custom_fields.map(f => ({
+                    ...f,
+                    value: CryptoJS.AES.encrypt(f.value, ENCRYPTION_KEY).toString()
+                }));
+            } else if (current.custom_fields) {
+                // If not updating custom fields but they exist, we must re-encrypt/preserve? 
+                // Wait, if we send stored encrypted payload back to server it's fine.
+                // But here we need to know if we are sending raw or encrypted.
+                // API expects custom_fields.
+                // If we don't send custom_fields in payload, backend might keep old? 
+                // My backend UPDATE query SETS tags checks if provided.
+                // But my backend code: `const { ... custom_fields } = req.body`.
+                // If I send undefined, `custom_fields` will be NULL/Undefined in SQL?
+                // `custom_fields = $8`. If undefined, it sets NULL.
+                // So I MUST send the existing ones if not updated.
+                // But `current.custom_fields` in state is DECRYPTED.
+                // So I must RE-ENCRYPT them if I send them back.
+                processedCustomFields = current.custom_fields.map(f => ({
+                    ...f,
+                    value: CryptoJS.AES.encrypt(f.value, ENCRYPTION_KEY).toString()
+                }));
+            }
+
+            const payload = {
+                title: merged.title,
+                username: merged.username,
+                encrypted_password: encrypted,
+                url: merged.url,
+                meta_person: merged.meta_person,
+                is_favorite: merged.isFavorite,
+                tags: merged.tags,
+                custom_fields: JSON.stringify(processedCustomFields)
+            };
+
+            await api.put(`/vault/${id}`, payload);
+
+            setPasswords(prev => {
+                const newState = prev.map(p => p.id === id ? { ...merged, password: passwordToEncrypt, custom_fields: updates.custom_fields || current.custom_fields } : p);
+                syncToLocal(newState);
+                return newState;
+            });
+            toast.success('Contraseña actualizada');
+        } catch (err) {
+            console.error("API Update failed", err);
+            toast.error('Error al actualizar');
+        }
+    };
+
+    const deletePassword = async (id) => {
+        try {
+            await api.delete(`/vault/${id}`); // Soft delete by default
+
+            setPasswords(prev => {
+                // Determine behavior: move to trash implies keeping it in state but marked isDeleted?
+                // Or remove from active list? 
+                // The API soft delete sets is_deleted=true. GET /vault filters out is_deleted=false usually?
+                // Let's check api.js: GET /vault usually returns active items. 
+                // But context often keeps all. 
+                // Let's mark it as deleted in local state.
+                const newState = prev.map(p => p.id === id ? { ...p, isDeleted: true, deletedAt: new Date().toISOString() } : p);
+                syncToLocal(newState);
+                return newState;
+            });
+
+            trackDelete();
+            toast.success('Contraseña movida a papelera');
+        } catch (err) {
+            console.error("API Delete failed", err);
+            toast.error('Error al eliminar');
+        }
+    };
+
+    // Restore from Trash
+    const restorePassword = async (id) => {
+        try {
+            await api.put(`/vault/${id}/restore`);
+
+            setPasswords(prev => {
+                const newState = prev.map(p => p.id === id ? { ...p, isDeleted: false, deletedAt: null } : p);
+                syncToLocal(newState);
+                return newState;
+            });
+            toast.success('Contraseña restaurada');
+        } catch (err) {
+            console.error("Restore failed", err);
+            toast.error('Error al restaurar');
+        }
+    };
+
+    const permanentlyDeletePassword = async (id) => {
+        try {
+            await api.delete(`/vault/${id}?force=true`);
+
+            setPasswords(prev => {
+                const newState = prev.filter(p => p.id !== id);
+                syncToLocal(newState);
+                return newState;
+            });
+            toast.success('Eliminado permanentemente');
+        } catch (err) {
+            console.error("Hard delete failed", err);
+            toast.error('Error al eliminar permanentemente');
+        }
+    };
+
+    const getPasswordHistory = async (id) => {
+        try {
+            const history = await api.get(`/vault/${id}/history`);
+            const decryptedHistory = history.map(item => {
+                try {
+                    const bytes = CryptoJS.AES.decrypt(item.encrypted_password, ENCRYPTION_KEY);
+                    const originalPassword = bytes.toString(CryptoJS.enc.Utf8);
+                    return { ...item, password: originalPassword };
+                } catch (e) {
+                    return { ...item, password: 'ERROR' };
+                }
+            });
+            return decryptedHistory;
+        } catch (err) {
+            console.error("Fetch history failed", err);
+            return [];
+        }
+    };
+
+    // Stubs
+    const sharePassword = () => ({ success: false, message: "No disponible" });
+    const getPasswordShares = () => [];
+    const revokeShare = () => { };
+    const checkPasswordBreach = () => [];
 
     return (
         <PasswordContext.Provider value={{
             passwords,
-            auditLog,
             addPassword,
-            bulkAddPasswords,
+            updatePassword,
             deletePassword,
+            sharePassword,
+            getPasswordShares,
+            revokeShare,
+            checkPasswordBreach,
             restorePassword,
             permanentlyDeletePassword,
-            toggleFavorite,
-            updatePassword,
-            restorePasswordVersion,
-            // Sharing functions
-            sharePassword,
-            revokeShare,
-            getPasswordShares,
-            getSharedPasswords,
-            updateShareAccess,
-            shares,
-            // Breach detection
-            checkPasswordForBreach,
-            checkAllPasswordsForBreaches
+            getPasswordHistory,
+            auditLogs,
+            fetchAuditLogs: async () => {
+                try {
+                    const items = await api.get('/audit');
+                    setAuditLogs(items);
+                } catch (err) { console.error(err); }
+            }
         }}>
             {children}
         </PasswordContext.Provider>

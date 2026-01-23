@@ -62,3 +62,53 @@ CREATE INDEX idx_vault_items_user_id ON vault_items(user_id);
 CREATE INDEX idx_vault_items_title ON vault_items(title);
 CREATE INDEX idx_devices_status ON devices(status);
 CREATE INDEX idx_devices_assigned_to ON devices(assigned_to);
+
+-- 5. SECURE NOTES TABLE
+CREATE TABLE notes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL, -- Encrypted content
+    is_favorite BOOLEAN DEFAULT FALSE,
+    is_deleted BOOLEAN DEFAULT FALSE,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. GROUPS TABLE
+CREATE TABLE groups (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 7. GROUP MEMBERS TABLE
+CREATE TABLE group_members (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(50) DEFAULT 'member', -- 'admin', 'member'
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(group_id, user_id)
+);
+
+-- 8. SHARES TABLE (Password Sharing)
+CREATE TABLE shares (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    password_id UUID REFERENCES vault_items(id) ON DELETE CASCADE,
+    shared_by UUID REFERENCES users(id) ON DELETE CASCADE,
+    shared_with UUID REFERENCES users(id) ON DELETE CASCADE,
+    permission VARCHAR(50) DEFAULT 'read', -- 'read', 'write'
+    expires_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes
+CREATE INDEX idx_notes_user_id ON notes(user_id);
+CREATE INDEX idx_group_members_user_id ON group_members(user_id);
+CREATE INDEX idx_group_members_group_id ON group_members(group_id);
+CREATE INDEX idx_shares_shared_with ON shares(shared_with);

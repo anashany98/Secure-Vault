@@ -28,7 +28,7 @@ export default function Inventory() {
     const inRepair = items.filter(i => i.status === 'reparacion').length;
 
     return (
-        <Layout>
+        <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-2">Inventario Corporativo</h1>
@@ -129,6 +129,6 @@ export default function Inventory() {
                 device={selectedDevice}
                 onClose={() => setSelectedDevice(null)}
             />
-        </Layout>
+        </div>
     );
 }

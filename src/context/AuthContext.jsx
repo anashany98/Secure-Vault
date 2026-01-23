@@ -1,95 +1,97 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import CryptoJS from 'crypto-js';
-import { useUsage } from './UsageContext';
+import { api } from '../lib/api';
+import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
 
-export const useAuth = () => useContext(AuthContext);
-
-const USERS_KEY = 'secure_vault_users';
-const CURRENT_USER_KEY = 'secure_vault_current_session';
-const DEFAULT_ADMIN = {
-    id: 'admin-001',
-    email: 'admin@company.com',
-    name: 'Admin User',
-    password: 'admin123', // In a real app, hash this!
-    role: 'admin'
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (!context) throw new Error('useAuth must be used within an AuthProvider');
+    return context;
 };
 
 export const AuthProvider = ({ children }) => {
-    const { trackLogin } = useUsage();
-    const [isAuthenticated, setIsAuthenticated] = useState(() => {
-        return !!localStorage.getItem(CURRENT_USER_KEY);
-    });
-
-    const [user, setUser] = useState(() => {
-        const stored = localStorage.getItem(CURRENT_USER_KEY);
-        return stored ? JSON.parse(stored) : null;
-    });
-
-    const [usersList, setUsersList] = useState(() => {
-        const stored = localStorage.getItem(USERS_KEY);
-        if (stored) {
-            return JSON.parse(stored);
-        }
-        return [DEFAULT_ADMIN];
-    });
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [usersList, setUsersList] = useState([]);
 
     useEffect(() => {
-        localStorage.setItem(USERS_KEY, JSON.stringify(usersList));
-    }, [usersList]);
-
-    const login = (email, password) => {
-        const foundUser = usersList.find(u => u.email === email && u.password === password);
-
-        if (foundUser) {
-            const { password, ...safeUser } = foundUser;
-            localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(safeUser));
-            setUser(safeUser);
-            setIsAuthenticated(true);
-            trackLogin(); // Track successful login
-            return { success: true };
-        }
-        return { success: false, error: 'Credenciales inválidas' };
-    };
-
-    const register = (newUser) => {
-        if (usersList.some(u => u.email === newUser.email)) {
-            return { success: false, error: 'El email ya existe' };
-        }
-        const createdUser = {
-            id: crypto.randomUUID(),
-            role: 'user', // Default role
-            createdAt: Date.now(),
-            ...newUser
+        const initAuth = async () => {
+            const token = localStorage.getItem('token');
+            const storedUser = localStorage.getItem('user');
+            if (token && storedUser) {
+                setUser(JSON.parse(storedUser));
+            }
+            setLoading(false);
         };
-        setUsersList(prev => [...prev, createdUser]);
-        return { success: true };
+        initAuth();
+    }, []);
+
+    // START FALLBACK LOGIC
+    const MOCK_ADMIN = {
+        id: 'admin-001',
+        name: 'Admin User',
+        email: 'admin@company.com',
+        role: 'admin',
+        token: 'mock-jwt-token-dev-mode'
     };
 
-    const deleteUser = (userId) => {
-        if (userId === DEFAULT_ADMIN.id) return { success: false, error: 'No se puede eliminar al admin' };
-        setUsersList(prev => prev.filter(u => u.id !== userId));
-        return { success: true };
+    const login = async (email, password) => {
+        try {
+            const data = await api.post('/auth/login', { email, password });
+
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            setUser(data.user);
+            toast.success('Bienvenido de nuevo');
+            return { success: true };
+        } catch (error) {
+            console.warn("API Login failed, trying local fallback...", error);
+
+            // Fallback for Local Dev
+            if (email === 'admin@company.com' && password === 'admin123') {
+                localStorage.setItem('token', MOCK_ADMIN.token);
+                localStorage.setItem('user', JSON.stringify(MOCK_ADMIN));
+                setUser(MOCK_ADMIN);
+                toast.success('Modo Offline: Bienvenido Admin');
+                return { success: true };
+            }
+
+            toast.error('Error al iniciar sesión. (Servidor no disponible)');
+            return { success: false, error: 'Credenciales inválidas (Offline)' };
+        }
     };
 
     const logout = () => {
-        localStorage.removeItem(CURRENT_USER_KEY);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
         setUser(null);
-        setIsAuthenticated(false);
+        toast.success('Sesión cerrada');
+    };
+
+    const register = async (name, email, password) => {
+        try {
+            await api.post('/auth/register', { name, email, password });
+            toast.success('Usuario registrado correctamente');
+            return login(email, password);
+        } catch (error) {
+            toast.error("El registro requiere conexión al servidor.");
+            return { success: false, error: error.message };
+        }
     };
 
     return (
         <AuthContext.Provider value={{
-            isAuthenticated,
             user,
-            usersList, // Exposed to Admin for management
             login,
             logout,
             register,
-            deleteUser
+            loading,
+            usersList,
+            isAuthenticated: !!user,
+            isAdmin: user?.role === 'admin'
         }}>
-            {children}
+            {!loading && children}
         </AuthContext.Provider>
     );
 };

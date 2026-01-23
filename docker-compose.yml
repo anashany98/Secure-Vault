@@ -1,29 +1,48 @@
 version: '3.8'
 
 services:
-  # Frontend Application (React served by Nginx)
-  frontend:
-    build: .
-    ports:
-      - "5050:80"
+  # Backend API
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.backend
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgres://admin:secure_password_123@database:5432/secure_vault_db
+      - JWT_SECRET=change_this_secret_in_prod
     depends_on:
       - database
     networks:
       - secure-vault-net
+    ports:
+      - "3000:3000"
     restart: always
 
-  # Database Service (PostgreSQL)
+  # Frontend Application
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5050:80"
+    depends_on:
+      - backend
+    networks:
+      - secure-vault-net
+    restart: always
+
+  # Database Service
   database:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: secure_password_123 # SETUP: Change in production
+      POSTGRES_PASSWORD: secure_password_123
       POSTGRES_DB: secure_vault_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database_schema.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5433:5432"
+      - "5432:5432"
     networks:
       - secure-vault-net
     restart: always
