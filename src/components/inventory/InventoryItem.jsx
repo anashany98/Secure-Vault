@@ -1,8 +1,8 @@
-import { Trash2, Edit2, Smartphone, Laptop, Monitor, Printer, Mouse, Box, User, Calendar } from 'lucide-react';
+import { Trash2, Edit2, Smartphone, Laptop, Monitor, Printer, Mouse, Box, User, Calendar, QrCode } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { deviceStatus } from '../../data/inventoryCatalog';
 
-export default function InventoryItem({ item }) {
+export default function InventoryItem({ item, onShowQR }) {
     const { deleteItem } = useInventory();
 
     const getTypeIcon = (typeId) => {
@@ -33,8 +33,16 @@ export default function InventoryItem({ item }) {
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
+                        onClick={(e) => { e.stopPropagation(); onShowQR(item); }}
+                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                        title="Generar Etiqueta QR"
+                    >
+                        <QrCode className="w-4 h-4" />
+                    </button>
+                    <button
                         onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
                         className="p-1.5 text-slate-400 hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
+                        title="Eliminar"
                     >
                         <Trash2 className="w-4 h-4" />
                     </button>

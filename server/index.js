@@ -15,6 +15,12 @@ const { initBackupService } = require('./services/backupService');
 // Initialize services
 initBackupService();
 
+// Initialize SQLite if enabled
+if (process.env.DB_CLIENT === 'sqlite') {
+    const initSQLite = require('./init_sqlite');
+    initSQLite().catch(console.error);
+}
+
 // Middleware
 app.use(helmet());
 app.use(cors());
@@ -45,6 +51,9 @@ app.use('/api/notes', require('./routes/notes'));
 app.use('/api/groups', require('./routes/groups'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/audit', require('./routes/audit'));
+app.use('/api/shares', require('./routes/shares'));
+app.use('/api/employees', require('./routes/employees'));
+app.use('/api/config', require('./routes/config'));
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date() });

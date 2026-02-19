@@ -26,10 +26,12 @@ export default function ShareModal({ isOpen, onClose, item, type = 'password' })
 
     if (!isOpen || !item) return null;
 
-    const handleGenerate = () => {
-        const link = generateShareLink(item, type, settings);
-        setGeneratedLink(link);
-        toast.success('Enlace seguro generado');
+    const handleGenerate = async () => {
+        const link = await generateShareLink(item, type, settings);
+        if (link) {
+            setGeneratedLink(link);
+            toast.success('Enlace seguro generado');
+        }
     };
 
     const copyToClipboard = () => {

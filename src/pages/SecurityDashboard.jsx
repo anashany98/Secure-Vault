@@ -4,6 +4,7 @@ import { Shield, AlertTriangle, CheckCircle, Clock, TrendingUp, BarChart3 } from
 import { usePasswords } from '../context/PasswordContext';
 import { calculateCrackTime } from '../lib/passwordSecurity';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import toast from 'react-hot-toast';
 
 export default function SecurityDashboard() {
     const { passwords, auditLogs } = usePasswords();
@@ -87,8 +88,8 @@ export default function SecurityDashboard() {
     return (
         <Layout>
             {/* Header */}
-            <div className="mb-8">
-                <div className="flex items-center gap-3 mb-2">
+            <div className="mb-8 flex items-center justify-between">
+                <div className="flex items-center gap-3">
                     <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center">
                         <Shield className="w-6 h-6 text-primary" />
                     </div>
@@ -97,6 +98,18 @@ export default function SecurityDashboard() {
                         <p className="text-slate-400">Análisis completo de la salud de tus contraseñas</p>
                     </div>
                 </div>
+                <button
+                    onClick={() => {
+                        const loadingToast = toast.loading('Analizando filtraciones... puede tardar unos segundos');
+                        checkAllPasswordsForBreaches((progress) => {
+                            // Optional: Could update toast with progress
+                        }).then(() => toast.dismiss(loadingToast));
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-medium shadow-lg shadow-red-500/20 transition-all hover:scale-105 active:scale-95"
+                >
+                    <AlertTriangle className="w-5 h-5" />
+                    Escanear Filtraciones
+                </button>
             </div>
 
             {/* Security Score */}
@@ -165,6 +178,48 @@ export default function SecurityDashboard() {
                 </div>
             </div>
 
+            {/* Critical Alerts - Breached Passwords */}
+            {analysis.breached > 0 && (
+                <div className="mb-8 bg-red-500/10 border border-red-500/50 rounded-2xl p-6">
+                    <div className="flex items-start gap-4">
+                        <div className="p-3 bg-red-500/20 rounded-full shrink-0">
+                            <AlertTriangle className="w-8 h-8 text-red-500" />
+                        </div>
+                        <div className="flex-1">
+                            <h2 className="text-xl font-bold text-white mb-2">
+                                ¡Acción Requerida! Hemos encontrado {analysis.breached} contraseñas filtradas
+                            </h2>
+                            <p className="text-red-200 mb-4">
+                                Estas contraseñas han aparecido en filtraciones de datos públicas. Los hackers las conocen. Debes cambiarlas inmediatamente.
+                            </p>
+
+                            <div className="bg-surface border border-red-500/30 rounded-xl overflow-hidden">
+                                {analysis.breached > 0 ? (
+                                    <table className="w-full text-left">
+                                        <thead className="bg-red-500/20 text-red-200 text-xs uppercase">
+                                            <tr>
+                                                <th className="p-3">Servicio</th>
+                                                <th className="p-3">Usuario</th>
+                                                <th className="p-3">Filtraciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-red-500/20">
+                                            {passwords.filter(p => p.breachCount > 0).map(p => (
+                                                <tr key={p.id} className="hover:bg-red-500/10">
+                                                    <td className="p-3 font-medium text-white">{p.title}</td>
+                                                    <td className="p-3 text-red-200">{p.username}</td>
+                                                    <td className="p-3 font-bold text-red-400">{p.breachCount}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Charts and Lists */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Strength Distribution */}
@@ -202,15 +257,20 @@ export default function SecurityDashboard() {
                 {/* Weak Passwords List */}
                 <div className="bg-surface border border-slate-700 rounded-xl p-6">
                     <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <AlertTriangle className="w-5 h-5 text-red-500" />
+                        <AlertTriangle className="w-5 h-5 text-orange-500" />
                         Contraseñas Débiles
                     </h2>
                     {analysis.weakPasswords.length > 0 ? (
                         <div className="space-y-2 max-h-64 overflow-y-auto">
                             {analysis.weakPasswords.slice(0, 10).map(pwd => (
-                                <div key={pwd.id} className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                                    <p className="font-medium text-white">{pwd.title}</p>
-                                    <p className="text-xs text-slate-400">{pwd.username}</p>
+                                <div key={pwd.id} className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-white">{pwd.title}</p>
+                                        <p className="text-xs text-slate-400">{pwd.username}</p>
+                                    </div>
+                                    <span className="text-xs text-orange-400 font-mono">
+                                        {calculateCrackTime(pwd.password).time}
+                                    </span>
                                 </div>
                             ))}
                         </div>

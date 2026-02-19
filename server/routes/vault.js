@@ -28,8 +28,8 @@ router.get('/', verifyToken, async (req, res) => {
         // Note: This is a simplified view.
         res.json([...ownedItems.rows, ...sharedItems.rows]);
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+        console.error("GET /vault FAILED:", err);
+        res.status(500).send('Server Error: ' + err.message);
     }
 });
 
@@ -186,21 +186,53 @@ router.post('/import', verifyToken, async (req, res) => {
                     item.custom_fields || []
                 ]
             );
-            importedCount++;
+            );
+importedCount++;
+
+// Auto-create Employee/Person from meta_person or username
+const personName = item.meta_person || item.username;
+if (personName && typeof personName === 'string' && personName.length > 2) {
+    // Determine if it's an email
+    const isEmail = personName.includes('@');
+    const emailVal = isEmail ? personName : null;
+    const nameVal = personName;
+
+    // Check and Insert if not exists (Basic check to avoid spamming duplicates in one batch)
+    // Note: Ideally this should be a bulk insert or ON CONFLICT, but for now we do a quick check
+    // We use a separate query ensuring we don't break the transaction if it fails (caught in try/catch internally or ignored)
+    try {
+        // Check if exists by name or email
+        const checkEmp = await client.query(
+            `SELECT id FROM employees WHERE full_name = $1 OR (email IS NOT NULL AND email = $2)`,
+            [nameVal, emailVal || '']
+        );
+
+        if (checkEmp.rows.length === 0) {
+            await client.query(
+                `INSERT INTO employees (full_name, email, status) VALUES ($1, $2, 'active')`,
+                [nameVal, emailVal]
+            );
+            console.log(`Auto-created employee from import: ${nameVal}`);
+        }
+    } catch (empErr) {
+        console.warn(`Failed to auto-create employee for ${personName}:`, empErr.message);
+        // Do not fail the whole import for this
+    }
+}
         }
 
-        await client.query('COMMIT');
+await client.query('COMMIT');
 
-        auditLog(req.user.id, 'IMPORT_CSV', 'VAULT', null, `Imported ${importedCount} items`, req);
+auditLog(req.user.id, 'IMPORT_CSV', 'VAULT', null, `Imported ${importedCount} items`, req);
 
-        res.json({ message: "Importación completada", count: importedCount });
+res.json({ message: "Importación completada", count: importedCount });
     } catch (err) {
-        await client.query('ROLLBACK');
-        console.error(err.message);
-        res.status(500).send('Server Error during import');
-    } finally {
-        client.release();
-    }
+    await client.query('ROLLBACK');
+    console.error("IMPORT FAILED:", err);
+    res.status(500).send('Server Error during import: ' + err.message);
+} finally {
+    client.release();
+}
 });
 
 // RESTORE FROM BACKUP (Wipe and Replace)

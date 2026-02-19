@@ -14,7 +14,10 @@ export const api = {
             const res = await fetch(`${API_URL}${endpoint}`, {
                 headers: getHeaders(),
             });
-            if (!res.ok) throw new Error(res.statusText);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ message: res.statusText }));
+                throw new Error(err.message || 'API Error');
+            }
             return res.json();
         } catch (e) {
             console.error(`API GET ${endpoint} failed:`, e);

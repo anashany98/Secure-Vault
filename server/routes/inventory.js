@@ -65,4 +65,57 @@ router.delete('/:id', verifyToken, async (req, res) => {
     }
 });
 
+// --- LICENSE LINKING ROUTES ---
+
+// Get licenses for a device
+router.get('/:id/licenses', verifyToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `SELECT dl.id as link_id, dl.assigned_at, v.* 
+             FROM device_licenses dl
+             JOIN vault_items v ON dl.vault_item_id = v.id
+             WHERE dl.device_id = $1`,
+            [id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+// Link license to device
+router.post('/:id/licenses', verifyToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { vault_item_id } = req.body;
+
+        const result = await pool.query(
+            `INSERT INTO device_licenses (device_id, vault_item_id) VALUES ($1, $2) RETURNING *`,
+            [id, vault_item_id]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        // Handle duplicate key error gracefully
+        if (err.code === '23505') {
+            return res.status(409).json({ message: 'License already linked' });
+        }
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+// Unlink license
+router.delete('/:id/licenses/:linkId', verifyToken, async (req, res) => {
+    try {
+        const { linkId } = req.params; // Note: this is the ID of the link in device_licenses table
+        await pool.query('DELETE FROM device_licenses WHERE id = $1', [linkId]);
+        res.json({ message: "License unlinked" });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
 module.exports = router;

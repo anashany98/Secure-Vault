@@ -13,6 +13,7 @@ import { InventoryProvider } from './context/InventoryContext';
 import { NotesProvider } from './context/NotesContext';
 import { GroupProvider } from './context/GroupContext';
 import { ShareProvider } from './context/ShareContext';
+import { ConfigProvider } from './context/ConfigContext';
 
 // Components
 import Sidebar from './components/layout/Sidebar';
@@ -132,30 +133,32 @@ function App() {
                   <GroupProvider>
                     <NotesProvider>
                       <ShareProvider>
-                        <Toaster
-                          position="top-right"
-                          toastOptions={{
-                            success: {
-                              duration: 3000,
-                              style: {
-                                background: '#10b981',
-                                color: '#fff',
+                        <ConfigProvider>
+                          <Toaster
+                            position="top-right"
+                            toastOptions={{
+                              success: {
+                                duration: 3000,
+                                style: {
+                                  background: '#10b981',
+                                  color: '#fff',
+                                },
                               },
-                            },
-                            error: {
-                              duration: 4000,
-                              style: {
-                                background: '#ef4444',
-                                color: '#fff',
+                              error: {
+                                duration: 4000,
+                                style: {
+                                  background: '#ef4444',
+                                  color: '#fff',
+                                },
                               },
-                            },
-                          }}
-                        />
-                        <BrowserRouter>
-                          <ErrorBoundary>
-                            <AppRoutes />
-                          </ErrorBoundary>
-                        </BrowserRouter>
+                            }}
+                          />
+                          <BrowserRouter>
+                            <ErrorBoundary>
+                              <AppRoutes />
+                            </ErrorBoundary>
+                          </BrowserRouter>
+                        </ConfigProvider>
                       </ShareProvider>
                     </NotesProvider>
                   </GroupProvider>

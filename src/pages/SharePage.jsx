@@ -24,12 +24,19 @@ export default function SharePage() {
         }
     }, [id, getShare]);
 
-    const handleReveal = () => {
+    const handleReveal = async () => {
         if (status !== 'ready') return;
 
-        consumeShare(id); // Burn the view
-        setIsRevealed(true);
-        setStatus('viewed');
+        const secret = await consumeShare(id); // Returns { encryptedData, type }
+        if (secret) {
+            setData(prev => ({ ...prev, ...secret }));
+            setIsRevealed(true);
+            setStatus('viewed');
+        } else {
+            // Handle error (already consumed or network error)
+            setStatus('error');
+            setError('No se pudo revelar el secreto (posiblemente ya fue visto)');
+        }
     };
 
     const copyToClipboard = (text) => {

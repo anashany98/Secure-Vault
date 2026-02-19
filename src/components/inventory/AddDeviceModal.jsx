@@ -1,10 +1,14 @@
 import { useState, useMemo } from 'react';
-import { X, Save, Smartphone, Laptop, Monitor, Printer, Mouse, Box, Package } from 'lucide-react';
+import { X, Save, Smartphone, Laptop, Monitor, Printer, Mouse, Box, Package, UserPlus } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useConfig } from '../../context/ConfigContext';
 import { deviceTypes, deviceStatus, predefinedCatalog } from '../../data/inventoryCatalog';
 
 export default function AddDeviceModal({ isOpen, onClose }) {
     const { addItem } = useInventory();
+    const { assignablePeople, addEmployee } = useConfig();
+    const [isAddingEmployee, setIsAddingEmployee] = useState(false);
+    const [newEmployeeName, setNewEmployeeName] = useState('');
     const [formData, setFormData] = useState({
         type: 'ordenador',
         brand: '',
@@ -15,7 +19,7 @@ export default function AddDeviceModal({ isOpen, onClose }) {
         notes: ''
     });
 
-    const [customModel, setCustomModel] = useState('');
+    // const [customModel, setCustomModel] = useState(''); // Removed, using direct input with datalist
 
     // Get available brands for selected type
     const availableBrands = useMemo(() => {
@@ -60,10 +64,7 @@ export default function AddDeviceModal({ isOpen, onClose }) {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        addItem({
-            ...formData,
-            model: formData.model === 'other' ? customModel : formData.model
-        });
+        addItem(formData);
         onClose();
         setFormData({
             type: 'ordenador',
@@ -74,7 +75,6 @@ export default function AddDeviceModal({ isOpen, onClose }) {
             status: 'en_uso',
             notes: ''
         });
-        setCustomModel('');
     };
 
     return (
@@ -143,43 +143,24 @@ export default function AddDeviceModal({ isOpen, onClose }) {
 
                         <div>
                             <label className="block text-sm font-medium text-slate-400 mb-1.5">Modelo</label>
-                            {availableModels.length > 0 ? (
-                                <div className="space-y-2">
-                                    <select
-                                        name="model"
-                                        value={formData.model}
-                                        onChange={handleChange}
-                                        required
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                    >
-                                        <option value="">Seleccionar Modelo</option>
-                                        {availableModels.map(model => (
-                                            <option key={model} value={model}>{model}</option>
-                                        ))}
-                                        <option value="other">Otro (Manual)</option>
-                                    </select>
-                                    {formData.model === 'other' && (
-                                        <input
-                                            type="text"
-                                            value={customModel}
-                                            onChange={(e) => setCustomModel(e.target.value)}
-                                            placeholder="Escribe el modelo..."
-                                            required
-                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 animate-in fade-in slide-in-from-top-1"
-                                        />
-                                    )}
-                                </div>
-                            ) : (
-                                <input
-                                    type="text"
-                                    name="model"
-                                    value={formData.model}
-                                    onChange={handleChange}
-                                    required
-                                    placeholder="Ej. Modelo X"
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                />
-                            )}
+
+                            <input
+                                list="model-options"
+                                type="text"
+                                name="model"
+                                value={formData.model}
+                                onChange={handleChange}
+                                placeholder="Escribe o selecciona..."
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                required
+                            />
+
+                            {/* Datalist for autocomplete suggestions */}
+                            <datalist id="model-options">
+                                {availableModels.map((model, index) => (
+                                    <option key={`${model}-${index}`} value={model} />
+                                ))}
+                            </datalist>
                         </div>
 
                         {/* Details */}
@@ -197,14 +178,69 @@ export default function AddDeviceModal({ isOpen, onClose }) {
 
                         <div>
                             <label className="block text-sm font-medium text-slate-400 mb-1.5">Asignado a</label>
-                            <input
-                                type="text"
-                                name="assignedTo"
-                                value={formData.assignedTo}
-                                onChange={handleChange}
-                                placeholder="Nombre completo"
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                            />
+                            <div className="space-y-2">
+                                <div className="flex gap-2">
+                                    <select
+                                        name="assignedTo"
+                                        value={formData.assignedTo}
+                                        onChange={handleChange}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                    >
+                                        <option value="">-- Sin Asignar --</option>
+                                        <optgroup label="Usuarios Registrados / Empleados">
+                                            {assignablePeople.map(person => (
+                                                <option key={`${person.type}-${person.id}`} value={person.label}>
+                                                    {person.displayName}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                        <option value="other_manual">📝 Otro (Escribir nombre manual)</option>
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsAddingEmployee(!isAddingEmployee)}
+                                        className="p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors"
+                                        title="Añadir nuevo empleado a la lista"
+                                    >
+                                        <UserPlus className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                {(isAddingEmployee || formData.assignedTo === 'other_manual') && (
+                                    <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700 animate-in fade-in slide-in-from-top-2">
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Nombre del nuevo empleado / externo:</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={newEmployeeName}
+                                                onChange={(e) => {
+                                                    setNewEmployeeName(e.target.value);
+                                                    setFormData(prev => ({ ...prev, assignedTo: e.target.value }));
+                                                }}
+                                                placeholder="Ej. Juan Pérez"
+                                                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                            />
+                                            {isAddingEmployee && (
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        if (!newEmployeeName) return;
+                                                        const success = await addEmployee({ full_name: newEmployeeName });
+                                                        if (success) {
+                                                            setIsAddingEmployee(false);
+                                                            setFormData(prev => ({ ...prev, assignedTo: newEmployeeName }));
+                                                            setNewEmployeeName('');
+                                                        }
+                                                    }}
+                                                    className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white text-xs font-bold rounded-lg transition-colors"
+                                                >
+                                                    Guardar Ficha
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div>
@@ -233,7 +269,7 @@ export default function AddDeviceModal({ isOpen, onClose }) {
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={!formData.type || !formData.brand || (!formData.model && !customModel)}
+                        disabled={!formData.type || !formData.brand || !formData.model}
                         className="flex items-center gap-2 bg-primary hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-primary/20"
                     >
                         <Save className="w-5 h-5" />

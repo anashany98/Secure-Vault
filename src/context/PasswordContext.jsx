@@ -18,71 +18,107 @@ export const PasswordProvider = ({ children }) => {
     const [auditLogs, setAuditLogs] = useState([]);
     const [filterTag, setFilterTag] = useState(null); // null means no filter
 
-    // Fetch passwords on mount or user change
-    useEffect(() => {
-        if (!user) {
-            setPasswords([]);
-            return;
-        }
-
-        const fetchPasswords = async () => {
-            try {
-                const items = await api.get('/vault');
-                const decrypted = items.map(item => {
-                    try {
-                        const bytes = CryptoJS.AES.decrypt(item.encrypted_password, ENCRYPTION_KEY);
-                        const originalPassword = bytes.toString(CryptoJS.enc.Utf8);
-
-                        // Decrypt custom fields
-                        let decryptedFields = [];
-                        if (item.custom_fields && Array.isArray(item.custom_fields)) {
-                            decryptedFields = item.custom_fields.map(f => {
-                                try {
-                                    const fb = CryptoJS.AES.decrypt(f.value, ENCRYPTION_KEY);
-                                    return { ...f, value: fb.toString(CryptoJS.enc.Utf8) };
-                                } catch (e) { return f; }
-                            });
-                        }
-
-                        return { ...item, password: originalPassword, custom_fields: decryptedFields };
-                    } catch (e) {
-                        console.error("Decryption failed for item", item.id);
-                        return { ...item, password: 'ERROR' };
-                    }
-                });
-                setPasswords(decrypted);
-            } catch (err) {
-                console.warn("API Vault failed, falling back to LocalStorage", err);
-                const localData = localStorage.getItem(`vault_${user.email}`);
-                if (localData) {
-                    setPasswords(JSON.parse(localData));
-                    if (passwords.length === 0) toast('Modo Offline: Usando datos locales', { icon: '📂' });
-                } else {
-                    setPasswords([]);
-                }
-            }
-        };
-
-        const fetchAuditLogs = async () => {
-            try {
-                const items = await api.get('/audit');
-                setAuditLogs(items);
-            } catch (err) {
-                console.error("Fetch audit logs failed", err);
-            }
-        };
-
-        fetchPasswords();
-        fetchAuditLogs();
-    }, [user]);
-
     // Helper to persist to local storage for offline capability
-    // We only update local storage as a cache, source of truth is backend
     const syncToLocal = (data) => {
         if (user?.email) {
             localStorage.setItem(`vault_${user.email}`, JSON.stringify(data));
         }
-    }
+    };
+
+    const refreshVault = async () => {
+        if (!user) return;
+        try {
+            const items = await api.get('/vault');
+            const decrypted = items.map(item => {
+                try {
+                    const bytes = CryptoJS.AES.decrypt(item.encrypted_password, ENCRYPTION_KEY);
+                    const originalPassword = bytes.toString(CryptoJS.enc.Utf8);
+
+                    // Decrypt custom fields
+                    let decryptedFields = [];
+                    if (item.custom_fields && Array.isArray(item.custom_fields)) {
+                        decryptedFields = item.custom_fields.map(f => {
+                            try {
+                                const fb = CryptoJS.AES.decrypt(f.value, ENCRYPTION_KEY);
+                                return { ...f, value: fb.toString(CryptoJS.enc.Utf8) };
+                            } catch (e) { return f; }
+                        });
+                    }
+
+                    return { ...item, password: originalPassword, custom_fields: decryptedFields };
+                } catch (e) {
+                    console.error("Decryption failed for item", item.id);
+                    return { ...item, password: 'ERROR' };
+                }
+            });
+            setPasswords(prev => {
+                const prevMap = new Map(prev.map(p => [p.id, p.breachCount || 0]));
+                return decrypted.map(item => ({
+                    ...item,
+                    breachCount: prevMap.get(item.id) || 0
+                }));
+            });
+            syncToLocal(decrypted);
+        } catch (err) {
+            console.warn("API Vault failed, falling back to LocalStorage", err);
+            const localData = localStorage.getItem(`vault_${user.email}`);
+            if (localData) {
+                setPasswords(JSON.parse(localData));
+                if (passwords.length === 0) toast('Modo Offline: Usando datos locales', { icon: '📂' });
+            }
+        }
+    };
+
+    // Fetch passwords on mount or user change
+    useEffect(() => {
+        if (user) {
+            refreshVault();
+            fetchAuditLogs();
+        } else {
+            setPasswords([]);
+        }
+    }, [user]);
+
+    const fetchAuditLogs = async () => {
+        try {
+            const items = await api.get('/audit');
+            setAuditLogs(items);
+        } catch (err) {
+            console.error("Fetch audit logs failed", err);
+        }
+    };
+
+    const bulkAddPasswords = async (items) => {
+        const toastId = toast.loading('Encriptando e importando...');
+        try {
+            // Encrypt client-side before sending
+            const encryptedItems = items.map(item => {
+                const encrypted = CryptoJS.AES.encrypt(item.password || '', ENCRYPTION_KEY).toString();
+                return {
+                    title: item.title,
+                    username: item.username,
+                    encrypted_password: encrypted,
+                    url: item.url,
+                    meta_person: item.meta_person,
+                    is_favorite: false,
+                    tags: [],
+                    custom_fields: JSON.stringify([])
+                };
+            });
+
+            const response = await api.post('/vault/import', { items: encryptedItems });
+
+            toast.success(`Importadas ${response.count} contraseñas`, { id: toastId });
+
+            // Refresh list to get IDs
+            await refreshVault();
+            trackCreate();
+
+        } catch (err) {
+            console.error("Bulk Import Failed", err);
+            toast.error("Error al importar. Revisa el formato.", { id: toastId });
+        }
+    };
 
     const addPassword = async (newPassword) => {
         try {
@@ -260,18 +296,98 @@ export const PasswordProvider = ({ children }) => {
     const sharePassword = () => ({ success: false, message: "No disponible" });
     const getPasswordShares = () => [];
     const revokeShare = () => { };
-    const checkPasswordBreach = () => [];
+
+    // Check single password against HIBP (k-Anonymity)
+    const checkPasswordBreach = async (password) => {
+        try {
+            if (!password) return 0;
+
+            // 1. Hash SHA-1
+            const sha1 = CryptoJS.SHA1(password).toString(CryptoJS.enc.Hex).toUpperCase();
+
+            // 2. Split Prefix (5 chars) and Suffix
+            const prefix = sha1.substring(0, 5);
+            const suffix = sha1.substring(5);
+
+            // 3. Fetch Range
+            const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
+            if (!response.ok) throw new Error('HIBP API Error');
+            const text = await response.text();
+
+            // 4. Parse Response to find suffix
+            const lines = text.split('\n');
+            const match = lines.find(line => line.startsWith(suffix));
+
+            if (match) {
+                // Format: SUFFIX:COUNT
+                return parseInt(match.split(':')[1], 10);
+            }
+            return 0;
+        } catch (err) {
+            console.error("Breach check failed", err);
+            return -1; // Error code
+        }
+    };
+
+    const checkAllPasswordsForBreaches = async (onProgress) => {
+        let checked = 0;
+        const total = passwords.length;
+
+        // Create a map of updates
+        const updates = new Map();
+
+        for (const item of passwords) {
+            if (item.isDeleted) continue; // Skip deleted
+
+            const count = await checkPasswordBreach(item.password);
+
+            if (count > 0) {
+                updates.set(item.id, count);
+            }
+
+            checked++;
+            if (onProgress) {
+                onProgress({
+                    current: checked,
+                    total: total,
+                    percentage: (checked / total) * 100
+                });
+            }
+
+            // Tiny delay to be nice to API
+            await new Promise(r => setTimeout(r, 50));
+        }
+
+        // Batch update state
+        if (updates.size > 0) {
+            setPasswords(prev => {
+                const newState = prev.map(p => {
+                    if (updates.has(p.id)) {
+                        return { ...p, breachCount: updates.get(p.id) };
+                    }
+                    return { ...p, breachCount: 0 }; // Clear previous breaches if safe now (unlikely for same pass but good logic)
+                });
+                syncToLocal(newState);
+                return newState;
+            });
+            toast.error(`¡Alerta! Se encontraron ${updates.size} contraseñas comprometidas.`, { duration: 5000, icon: '🚨' });
+        } else {
+            toast.success('Análisis completado: No se encontraron filtraciones.', { duration: 5000, icon: '🛡️' });
+        }
+    };
 
     return (
         <PasswordContext.Provider value={{
             passwords,
             addPassword,
+            bulkAddPasswords,
             updatePassword,
             deletePassword,
             sharePassword,
             getPasswordShares,
             revokeShare,
             checkPasswordBreach,
+            checkAllPasswordsForBreaches,
             restorePassword,
             permanentlyDeletePassword,
             getPasswordHistory,

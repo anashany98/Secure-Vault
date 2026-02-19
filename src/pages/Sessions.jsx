@@ -56,7 +56,7 @@ export default function Sessions() {
     };
 
     return (
-        <Layout>
+        <div className="animate-fade-in">
             <div className="mb-8">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -147,6 +147,6 @@ export default function Sessions() {
                     </p>
                 </div>
             </div>
-        </Layout>
+        </div>
     );
 }

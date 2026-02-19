@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, Trash2, ExternalLink, Shield } from 'lucide-react';
+import { Copy, Eye, EyeOff, Trash2, ExternalLink, Shield, AlertTriangle } from 'lucide-react';
 import { usePasswords } from '../../context/PasswordContext';
 import { calculateCrackTime, getSecurityEmoji } from '../../lib/passwordSecurity';
 import { cn } from '../../lib/utils';
@@ -100,6 +100,14 @@ export default function PasswordTable({ items }) {
                             <td className="p-4">
                                 {(() => {
                                     const security = calculateCrackTime(item.password);
+                                    if (item.breachCount > 0) {
+                                        return (
+                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/50 animate-pulse" title={`Aparece en ${item.breachCount} filtraciones`}>
+                                                <AlertTriangle className="w-3 h-3" />
+                                                <span>COMPROMETIDA</span>
+                                            </div>
+                                        );
+                                    }
                                     return (
                                         <div className={cn(
                                             "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border",

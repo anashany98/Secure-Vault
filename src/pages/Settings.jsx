@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import Layout from '../components/layout/Layout';
-import { User, Shield, Activity, Clock, Sun, Moon, Upload, RefreshCw, FileJson, Database } from 'lucide-react';
+import { User, Shield, Activity, Clock, Sun, Moon, Upload, RefreshCw, Database } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useConfig } from '../context/ConfigContext';
 import { usePasswords } from '../context/PasswordContext';
 import { useTheme } from '../context/ThemeContext';
 import ThemeCustomizer from '../components/settings/ThemeCustomizer';
@@ -12,15 +12,28 @@ import TwoFactorSettings from '../components/settings/TwoFactorSettings';
 import toast from 'react-hot-toast';
 
 export default function Settings() {
-    const { user: currentUser } = useAuth(); // Removed unused exports
+    const { user: currentUser } = useAuth();
     const { auditLog } = usePasswords();
     const { theme, toggleTheme, isDark } = useTheme();
-    const [activeTab, setActiveTab] = useState('preferences'); // Default to preferences for non-admins usually, but let's keep logic
+    const { config, updateConfig } = useConfig();
+
+    // Config state
+    const [companyNameLocal, setCompanyNameLocal] = useState('');
+
+    const [activeTab, setActiveTab] = useState('preferences');
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
 
     // Helper for role check
     const isAdmin = currentUser?.role === 'admin';
+
+    const handleUpdateConfig = () => {
+        updateConfig({ company_name: companyNameLocal });
+        toast.success('Configuración guardada');
+    };
+
+    // Initialize local state
+    if (!companyNameLocal && config?.company_name) setCompanyNameLocal(config.company_name);
 
     const getActionColor = (action) => {
         switch (action) {
@@ -80,9 +93,48 @@ export default function Settings() {
                         Apariencia
                     </div>
                 </button>
+                <button
+                    onClick={() => setActiveTab('config')}
+                    className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'config' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
+                >
+                    <div className="flex items-center gap-2">
+                        <Database className="w-4 h-4" />
+                        Empresa
+                    </div>
+                </button>
             </div>
 
-            {activeTab === 'users' && isAdmin ? (
+            {activeTab === 'config' ? (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div className="bg-surface border border-slate-700 rounded-2xl p-6">
+                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <Database className="w-5 h-5 text-primary" />
+                            Datos de la Organización
+                        </h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1.5">Nombre de la Empresa</label>
+                                <p className="text-xs text-slate-500 mb-2">Este nombre aparecerá en las etiquetas de inventario y reportes.</p>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={companyNameLocal}
+                                        onChange={(e) => setCompanyNameLocal(e.target.value)}
+                                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                        placeholder="Ej. Industrias Stark"
+                                    />
+                                    <button
+                                        onClick={handleUpdateConfig}
+                                        className="px-4 py-2 bg-primary hover:bg-primary/90 text-white font-medium rounded-lg transition-colors"
+                                    >
+                                        Guardar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : activeTab === 'users' && isAdmin ? (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <UsersManager />
                 </div>
@@ -90,13 +142,11 @@ export default function Settings() {
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <TwoFactorSettings user={currentUser} />
 
-                    {/* Auto-logout */}
                     <div className="bg-surface border border-slate-700 rounded-2xl p-6">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <Clock className="w-5 h-5 text-primary" />
                             Auto-logout por Inactividad
                         </h3>
-                        {/* ... auto-logout content ... (moving it here from preferences) */}
                         <p className="text-sm text-slate-400 mb-4">
                             Cierra sesión automáticamente después de un período de inactividad
                         </p>
@@ -124,7 +174,6 @@ export default function Settings() {
                 </div>
             ) : activeTab === 'preferences' ? (
                 <div className="space-y-6">
-                    {/* Dark Mode Toggle */}
                     <div className="bg-surface border border-slate-700 rounded-2xl p-6">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             {isDark ? <Moon className="w-5 h-5 text-primary" /> : <Sun className="w-5 h-5 text-yellow-500" />}
@@ -151,17 +200,10 @@ export default function Settings() {
                         </div>
                     </div>
 
-                    {/* Theme Customizer */}
                     <div className="bg-surface border border-slate-700 rounded-2xl p-6">
                         <ThemeCustomizer />
                     </div>
 
-                    {/* Theme Customizer */}
-                    <div className="bg-surface border border-slate-700 rounded-2xl p-6">
-                        <ThemeCustomizer />
-                    </div>
-
-                    {/* Data Management */}
                     <div className="bg-surface border border-slate-700 rounded-2xl p-6">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <Database className="w-5 h-5 text-primary" />
@@ -172,7 +214,6 @@ export default function Settings() {
                         </p>
 
                         <div className="space-y-4">
-                            {/* Export */}
                             <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-800">
                                 <div>
                                     <p className="text-white font-medium">Exportar Copia de Seguridad</p>
@@ -187,7 +228,6 @@ export default function Settings() {
                                 </button>
                             </div>
 
-                            {/* Restore */}
                             <div className="flex items-center justify-between p-4 bg-red-900/10 rounded-xl border border-red-900/20">
                                 <div>
                                     <p className="text-white font-medium">Restaurar Copia de Seguridad</p>
@@ -238,7 +278,7 @@ export default function Settings() {
                                                 {log.user}
                                             </td>
                                             <td className="p-4">
-                                                <span className={`px - 2 py - 1 rounded text - [10px] font - bold uppercase ${getActionColor(log.action)} `}>
+                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getActionColor(log.action)}`}>
                                                     {log.action}
                                                 </span>
                                             </td>
@@ -260,8 +300,7 @@ export default function Settings() {
                         )}
                     </div>
                 </div>
-            )
-            }
+            )}
             <ExportVaultModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} />
             <ImportVaultModal isOpen={isRestoreModalOpen} onClose={() => setIsRestoreModalOpen(false)} />
         </div>

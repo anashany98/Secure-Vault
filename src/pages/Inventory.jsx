@@ -7,11 +7,14 @@ import InventoryItem from '../components/inventory/InventoryItem';
 import AddDeviceModal from '../components/inventory/AddDeviceModal';
 import DeviceDetailModal from '../components/inventory/DeviceDetailModal';
 
+import DeviceQRModal from '../components/inventory/DeviceQRModal';
+
 export default function Inventory() {
     const { user } = useAuth();
     const { items } = useInventory();
     const [isModaAddOpen, setIsModalAddOpen] = useState(false);
     const [selectedDevice, setSelectedDevice] = useState(null);
+    const [qrDevice, setQrDevice] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
 
     const filteredItems = items.filter(item =>
@@ -116,7 +119,7 @@ export default function Inventory() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredItems.map(item => (
                         <div key={item.id} onClick={() => setSelectedDevice(item)} className="cursor-pointer">
-                            <InventoryItem item={item} />
+                            <InventoryItem item={item} onShowQR={setQrDevice} />
                         </div>
                     ))}
                 </div>
@@ -128,6 +131,11 @@ export default function Inventory() {
                 isOpen={!!selectedDevice}
                 device={selectedDevice}
                 onClose={() => setSelectedDevice(null)}
+            />
+
+            <DeviceQRModal
+                device={qrDevice}
+                onClose={() => setQrDevice(null)}
             />
         </div>
     );
