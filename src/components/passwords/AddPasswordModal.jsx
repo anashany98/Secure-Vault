@@ -51,6 +51,7 @@ export default function AddPasswordModal({ isOpen, onClose }) {
                     <div>
                         <label className="block text-sm font-medium text-slate-300 mb-1">Título (ej. Google)</label>
                         <input
+                            data-testid="add-password-title"
                             required
                             type="text"
                             placeholder="Nombre del servicio"
@@ -64,6 +65,7 @@ export default function AddPasswordModal({ isOpen, onClose }) {
                         <div>
                             <label className="block text-sm font-medium text-slate-300 mb-1">Usuario/Email</label>
                             <input
+                                data-testid="add-password-username"
                                 required
                                 type="text"
                                 placeholder="usuario@ejemplo.com"
@@ -76,6 +78,7 @@ export default function AddPasswordModal({ isOpen, onClose }) {
                             <label className="block text-sm font-medium text-slate-300 mb-1">Contraseña</label>
                             <div className="relative">
                                 <input
+                                    data-testid="add-password-password"
                                     required
                                     type="password"
                                     placeholder="••••••••"
@@ -98,6 +101,7 @@ export default function AddPasswordModal({ isOpen, onClose }) {
                     <div>
                         <label className="block text-sm font-medium text-slate-300 mb-1">Sitio Web (Opcional)</label>
                         <input
+                            data-testid="add-password-url"
                             type="url"
                             placeholder="https://ejemplo.com"
                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -109,6 +113,7 @@ export default function AddPasswordModal({ isOpen, onClose }) {
                     <div>
                         <label className="block text-sm font-medium text-slate-300 mb-1">Propietario / Persona</label>
                         <input
+                            data-testid="add-password-owner"
                             type="text"
                             list="owners-list"
                             placeholder="¿A quién pertenece esta cuenta?"
@@ -152,6 +157,7 @@ export default function AddPasswordModal({ isOpen, onClose }) {
 
                     <div className="flex justify-end gap-3 mt-6">
                         <button
+                            data-testid="add-password-cancel"
                             type="button"
                             onClick={onClose}
                             className="px-4 py-2 text-slate-300 hover:text-white font-medium transition-colors"
@@ -159,6 +165,7 @@ export default function AddPasswordModal({ isOpen, onClose }) {
                             Cancelar
                         </button>
                         <button
+                            data-testid="add-password-save"
                             type="submit"
                             className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg font-bold transition-all hover:shadow-lg hover:shadow-primary/20"
                         >

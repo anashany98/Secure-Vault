@@ -57,6 +57,7 @@ export default function Settings() {
             <div className="flex gap-4 border-b border-slate-700 mb-8 overflow-x-auto">
                 {isAdmin && (
                     <button
+                        data-testid="settings-tab-users"
                         onClick={() => setActiveTab('users')}
                         className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'users' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                     >
@@ -67,6 +68,7 @@ export default function Settings() {
                     </button>
                 )}
                 <button
+                    data-testid="settings-tab-activity"
                     onClick={() => setActiveTab('activity')}
                     className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'activity' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                 >
@@ -76,6 +78,7 @@ export default function Settings() {
                     </div>
                 </button>
                 <button
+                    data-testid="settings-tab-security"
                     onClick={() => setActiveTab('seguridad')}
                     className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'seguridad' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                 >
@@ -85,6 +88,7 @@ export default function Settings() {
                     </div>
                 </button>
                 <button
+                    data-testid="settings-tab-preferences"
                     onClick={() => setActiveTab('preferences')}
                     className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'preferences' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                 >
@@ -94,6 +98,7 @@ export default function Settings() {
                     </div>
                 </button>
                 <button
+                    data-testid="settings-tab-company"
                     onClick={() => setActiveTab('config')}
                     className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'config' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                 >
@@ -220,6 +225,7 @@ export default function Settings() {
                                     <p className="text-sm text-slate-500">Descarga un archivo encriptado .json</p>
                                 </div>
                                 <button
+                                    data-testid="settings-open-export"
                                     onClick={() => setIsExportModalOpen(true)}
                                     className="flex items-center gap-2 text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-700 hover:border-slate-600"
                                 >
@@ -234,6 +240,7 @@ export default function Settings() {
                                     <p className="text-sm text-slate-500">IMPORTANTE: Sobrescribe todos los datos actuales</p>
                                 </div>
                                 <button
+                                    data-testid="settings-open-restore"
                                     onClick={() => setIsRestoreModalOpen(true)}
                                     className="flex items-center gap-2 text-red-100 bg-red-900/50 hover:bg-red-900/80 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-red-500/30"
                                 >

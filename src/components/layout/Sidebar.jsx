@@ -9,8 +9,9 @@ import KeyboardShortcutsModal from '../common/KeyboardShortcutsModal';
 import AddFolderModal from '../folders/AddFolderModal';
 import RenameFolderModal from '../folders/RenameFolderModal';
 
-const NavItem = ({ icon: Icon, label, active, onClick, className, actions }) => (
+const NavItem = ({ icon: Icon, label, active, onClick, className, actions, testId }) => (
     <button
+        data-testid={testId}
         onClick={onClick}
         className={cn(
             "w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl transition-all group",
@@ -178,6 +179,7 @@ export default function Sidebar() {
                         <NavItem
                             icon={Key}
                             label="Todas las contraseñas"
+                            testId="nav-all-passwords"
                             active={currentView === 'all' && !filterTag}
                             onClick={() => {
                                 setCurrentView('all');
@@ -187,6 +189,7 @@ export default function Sidebar() {
                         <NavItem
                             icon={Star}
                             label="Favoritos"
+                            testId="nav-favorites"
                             active={currentView === 'favorites'}
                             onClick={() => {
                                 setCurrentView('favorites');
@@ -196,6 +199,7 @@ export default function Sidebar() {
                         <NavItem
                             icon={Share2}
                             label="Compartidas"
+                            testId="nav-shared"
                             active={currentView === 'shared'}
                             onClick={() => {
                                 setCurrentView('shared');
@@ -268,6 +272,7 @@ export default function Sidebar() {
                         <NavItem
                             icon={StickyNote}
                             label="Notas Seguras"
+                            testId="nav-notes"
                             active={currentView === 'notes'}
                             onClick={() => {
                                 setCurrentView('notes');
@@ -277,6 +282,7 @@ export default function Sidebar() {
                         <NavItem
                             icon={Users}
                             label="Grupos"
+                            testId="nav-groups"
                             active={currentView === 'groups'}
                             onClick={() => {
                                 setCurrentView('groups');
@@ -286,6 +292,7 @@ export default function Sidebar() {
                         <NavItem
                             icon={Package}
                             label="Inventario"
+                            testId="nav-inventory"
                             active={currentView === 'inventory'}
                             onClick={() => {
                                 setCurrentView('inventory');
@@ -300,6 +307,7 @@ export default function Sidebar() {
                     <NavItem
                         icon={Trash2}
                         label="Papelera"
+                        testId="nav-trash"
                         active={currentView === 'trash'}
                         onClick={() => {
                             setCurrentView('trash');
@@ -309,6 +317,7 @@ export default function Sidebar() {
                     <NavItem
                         icon={Settings}
                         label="Ajustes"
+                        testId="nav-settings"
                         active={currentView === 'settings'}
                         onClick={() => {
                             setCurrentView('settings');
@@ -318,6 +327,7 @@ export default function Sidebar() {
                     <NavItem
                         icon={Activity}
                         label="Sesiones"
+                        testId="nav-sessions"
                         active={currentView === 'sessions'}
                         onClick={() => {
                             setCurrentView('sessions');
@@ -327,6 +337,7 @@ export default function Sidebar() {
                     <NavItem
                         icon={LogOut}
                         label="Cerrar Sesión"
+                        testId="nav-logout"
                         onClick={logout}
                         className="text-danger hover:text-danger hover:bg-danger/10"
                     />

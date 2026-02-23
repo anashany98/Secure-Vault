@@ -111,6 +111,7 @@ export default function ExportVaultModal({ isOpen, onClose }) {
                         <div>
                             <label className="block text-sm font-medium text-slate-300 mb-1">Contraseña de encriptación</label>
                             <input
+                                data-testid="export-password"
                                 required
                                 type="password"
                                 placeholder="••••••••"
@@ -122,6 +123,7 @@ export default function ExportVaultModal({ isOpen, onClose }) {
                         <div>
                             <label className="block text-sm font-medium text-slate-300 mb-1">Confirmar contraseña</label>
                             <input
+                                data-testid="export-password-confirm"
                                 required
                                 type="password"
                                 placeholder="••••••••"
@@ -133,6 +135,7 @@ export default function ExportVaultModal({ isOpen, onClose }) {
 
                         <div className="flex justify-end gap-3 mt-6">
                             <button
+                                data-testid="export-cancel"
                                 type="button"
                                 onClick={onClose}
                                 className="px-4 py-2 text-slate-300 hover:text-white font-medium transition-colors"
@@ -140,6 +143,7 @@ export default function ExportVaultModal({ isOpen, onClose }) {
                                 Cancelar
                             </button>
                             <button
+                                data-testid="export-submit"
                                 type="submit"
                                 disabled={isExporting}
                                 className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg font-bold transition-all hover:shadow-lg hover:shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"

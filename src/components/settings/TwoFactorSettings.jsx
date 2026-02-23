@@ -99,6 +99,7 @@ export default function TwoFactorSettings({ user }) {
                         <div className="pt-2">
                             {isEnabled ? (
                                 <button
+                                    data-testid="twofa-disable"
                                     onClick={disable2FA}
                                     className="px-4 py-2 bg-red-900/10 hover:bg-red-900/20 text-red-500 border border-red-900/20 rounded-xl transition-all text-sm font-bold"
                                 >
@@ -106,6 +107,7 @@ export default function TwoFactorSettings({ user }) {
                                 </button>
                             ) : (
                                 <button
+                                    data-testid="twofa-start-setup"
                                     onClick={startSetup}
                                     className="px-6 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl transition-all font-bold shadow-lg shadow-primary/20 flex items-center gap-2"
                                 >
@@ -153,6 +155,7 @@ export default function TwoFactorSettings({ user }) {
                                     </h4>
                                     <div className="flex gap-2">
                                         <input
+                                            data-testid="twofa-token-input"
                                             type="text"
                                             maxLength={6}
                                             value={token}
@@ -161,6 +164,7 @@ export default function TwoFactorSettings({ user }) {
                                             className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 text-center text-2xl font-mono tracking-[0.5em] w-48"
                                         />
                                         <button
+                                            data-testid="twofa-verify-enable"
                                             disabled={token.length !== 6 || loading}
                                             onClick={verifyAndEnable}
                                             className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl transition-all font-bold"
@@ -198,6 +202,7 @@ export default function TwoFactorSettings({ user }) {
                                 </div>
 
                                 <button
+                                    data-testid="twofa-finish"
                                     onClick={() => {
                                         setIsSettingUp(false);
                                         setStep(1);

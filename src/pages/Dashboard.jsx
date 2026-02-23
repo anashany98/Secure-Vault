@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import Layout from '../components/layout/Layout';
 import { Plus, Search, ShieldCheck, AlertTriangle, Settings, Trash2, Upload, Filter, X, LayoutGrid, List, Link as LinkIcon, FileJson, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePasswords } from '../context/PasswordContext';
@@ -243,6 +242,7 @@ export default function Dashboard() {
                     {/* View Toggle */}
                     <div className="flex bg-surface border border-slate-700 rounded-xl p-1">
                         <button
+                            data-testid="dashboard-view-grid"
                             onClick={() => setViewMode('grid')}
                             className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-white'}`}
                             title="Vista Cuadrícula"
@@ -250,6 +250,7 @@ export default function Dashboard() {
                             <LayoutGrid className="w-4 h-4" />
                         </button>
                         <button
+                            data-testid="dashboard-view-table"
                             onClick={() => setViewMode('table')}
                             className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-white'}`}
                             title="Vista Lista"
@@ -262,6 +263,7 @@ export default function Dashboard() {
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                             <input
+                                data-testid="dashboard-quick-search"
                                 type="text"
                                 placeholder="Búsqueda rápida..."
                                 value={searchQuery}
@@ -292,6 +294,7 @@ export default function Dashboard() {
                         <ShieldCheck className="w-5 h-5" />
                     </button>
                     <button
+                        data-testid="dashboard-new-password"
                         onClick={() => setIsModalOpen(true)}
                         className="flex items-center gap-2 bg-primary hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-primary/20 hover:scale-105"
                     >

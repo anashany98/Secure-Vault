@@ -33,7 +33,9 @@ export default function PasswordCard({ item, onClick, onShare }) {
     };
 
     return (
-        <div className={cn(
+        <div
+            data-testid={`password-card-${item.id}`}
+            className={cn(
             "bg-surface border border-slate-700 rounded-xl p-5 hover:border-primary/50 transition-all group relative",
             item.isDeleted && "opacity-75 grayscale hover:grayscale-0"
         )}>
@@ -41,6 +43,7 @@ export default function PasswordCard({ item, onClick, onShare }) {
                 {item.isDeleted ? (
                     <>
                         <button
+                            data-testid={`password-restore-${item.id}`}
                             onClick={() => restorePassword(item.id)}
                             className="text-primary hover:text-emerald-400 p-1 rounded-lg hover:bg-slate-800 transition-colors"
                             title="Restaurar"
@@ -48,6 +51,7 @@ export default function PasswordCard({ item, onClick, onShare }) {
                             <RotateCcw className="w-4 h-4" />
                         </button>
                         <button
+                            data-testid={`password-hard-delete-${item.id}`}
                             onClick={() => permanentlyDeletePassword(item.id)}
                             className="text-danger hover:text-red-400 p-1 rounded-lg hover:bg-slate-800 transition-colors"
                             title="Eliminar permanentemente"
@@ -87,6 +91,7 @@ export default function PasswordCard({ item, onClick, onShare }) {
                             <Edit className="w-4 h-4" />
                         </button>
                         <button
+                            data-testid={`password-share-${item.id}`}
                             onClick={onShare ? onShare : () => setIsShareOpen(true)}
                             className="text-slate-500 hover:text-primary p-1 rounded-lg hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100 relative"
                             title="Compartir"
@@ -102,6 +107,7 @@ export default function PasswordCard({ item, onClick, onShare }) {
                             })()}
                         </button>
                         <button
+                            data-testid={`password-delete-${item.id}`}
                             onClick={() => deletePassword(item.id)}
                             className="text-slate-500 hover:text-danger p-1 rounded-lg hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100"
                             title="Mover a papelera"

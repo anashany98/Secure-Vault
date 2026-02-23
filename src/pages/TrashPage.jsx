@@ -53,7 +53,7 @@ const TrashPage = () => {
     const ItemList = ({ items, type, Icon }) => (
         <div className="space-y-3">
             {items.map(item => (
-                <div key={item.id} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group hover:shadow-md transition-all">
+                <div key={item.id} data-testid={`trash-item-${type}-${item.id}`} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group hover:shadow-md transition-all">
                     <div className="flex items-center gap-4">
                         <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
                             <Icon className="w-5 h-5 text-red-500" />
@@ -69,6 +69,7 @@ const TrashPage = () => {
                     </div>
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
+                            data-testid={`trash-restore-${type}-${item.id}`}
                             onClick={() => handleRestore(item.id, type)}
                             className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
                             title="Restaurar"
@@ -76,6 +77,7 @@ const TrashPage = () => {
                             <RefreshCw className="w-5 h-5" />
                         </button>
                         <button
+                            data-testid={`trash-delete-${type}-${item.id}`}
                             onClick={() => handleDelete(item.id, type)}
                             className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                             title="Eliminar definitivamente"
@@ -105,6 +107,7 @@ const TrashPage = () => {
 
             <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
                 <button
+                    data-testid="trash-tab-passwords"
                     onClick={() => setActiveTab('passwords')}
                     className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'passwords'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
@@ -114,6 +117,7 @@ const TrashPage = () => {
                     Contraseñas ({deletedPasswords.length})
                 </button>
                 <button
+                    data-testid="trash-tab-notes"
                     onClick={() => setActiveTab('notes')}
                     className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'notes'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
@@ -123,6 +127,7 @@ const TrashPage = () => {
                     Notas ({deletedNotes.length})
                 </button>
                 <button
+                    data-testid="trash-tab-inventory"
                     onClick={() => setActiveTab('inventory')}
                     className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'inventory'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'

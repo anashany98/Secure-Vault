@@ -176,6 +176,7 @@ export default function ImportVaultModal({ isOpen, onClose }) {
                         <div>
                             <label className="block text-sm font-medium text-slate-300 mb-2">Archivo (.json o .csv)</label>
                             <input
+                                data-testid="import-file-input"
                                 type="file"
                                 accept=".json,.csv"
                                 ref={fileInputRef}
@@ -205,6 +206,7 @@ export default function ImportVaultModal({ isOpen, onClose }) {
                             <div>
                                 <label className="block text-sm font-medium text-slate-300 mb-1">Contraseña de desencriptación (JSON)</label>
                                 <input
+                                    data-testid="import-json-password"
                                     required
                                     type="password"
                                     placeholder="••••••••"
@@ -217,6 +219,7 @@ export default function ImportVaultModal({ isOpen, onClose }) {
 
                         <div className="flex justify-end gap-3 mt-6">
                             <button
+                                data-testid="import-cancel"
                                 type="button"
                                 onClick={onClose}
                                 className="px-4 py-2 text-slate-300 hover:text-white font-medium transition-colors"
@@ -224,6 +227,7 @@ export default function ImportVaultModal({ isOpen, onClose }) {
                                 Cancelar
                             </button>
                             <button
+                                data-testid="import-submit"
                                 type="submit"
                                 disabled={isRestoring}
                                 className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${file?.name.endsWith('.csv')

@@ -72,6 +72,7 @@ export default function ShareModal({ isOpen, onClose, item, type = 'password' })
                                     Expira en
                                 </label>
                                 <select
+                                    data-testid="public-share-expiration"
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                                     value={settings.expiration}
                                     onChange={e => setSettings({ ...settings, expiration: Number(e.target.value) })}
@@ -89,6 +90,7 @@ export default function ShareModal({ isOpen, onClose, item, type = 'password' })
                                     Límite de visualizaciones
                                 </label>
                                 <select
+                                    data-testid="public-share-views"
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                                     value={settings.views}
                                     onChange={e => setSettings({ ...settings, views: Number(e.target.value) })}
@@ -102,6 +104,7 @@ export default function ShareModal({ isOpen, onClose, item, type = 'password' })
                             {type === 'password' && (
                                 <div className="flex items-center gap-3 bg-slate-900/50 p-3 rounded-lg border border-slate-800">
                                     <input
+                                        data-testid="public-share-include-username"
                                         type="checkbox"
                                         id="includeUser"
                                         checked={settings.includeUsername}
@@ -115,6 +118,7 @@ export default function ShareModal({ isOpen, onClose, item, type = 'password' })
                             )}
 
                             <button
+                                data-testid="public-share-generate"
                                 onClick={handleGenerate}
                                 className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20"
                             >
@@ -133,6 +137,7 @@ export default function ShareModal({ isOpen, onClose, item, type = 'password' })
                                         {generatedLink}
                                     </code>
                                     <button
+                                        data-testid="public-share-copy-link"
                                         onClick={copyToClipboard}
                                         className="p-2 hover:bg-slate-800 rounded-md text-slate-400 hover:text-white transition-colors"
                                     >
@@ -146,6 +151,7 @@ export default function ShareModal({ isOpen, onClose, item, type = 'password' })
                             </p>
 
                             <button
+                                data-testid="public-share-close"
                                 onClick={onClose}
                                 className="w-full bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 rounded-xl transition-colors"
                             >

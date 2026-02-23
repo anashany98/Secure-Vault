@@ -57,6 +57,7 @@ export default function Login() {
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-300">Correo Electrónico</label>
                                 <input
+                                    data-testid="login-email"
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
@@ -69,6 +70,7 @@ export default function Login() {
                                 <label className="text-sm font-medium text-slate-300">Contraseña</label>
                                 <div className="relative">
                                     <input
+                                        data-testid="login-password"
                                         type="password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
@@ -88,6 +90,7 @@ export default function Login() {
                             <div className="space-y-2 text-center">
                                 <label className="text-sm font-medium text-slate-300 block">Código 2FA</label>
                                 <input
+                                    data-testid="login-2fa-code"
                                     autoFocus
                                     type="text"
                                     maxLength={6}
@@ -114,6 +117,7 @@ export default function Login() {
                     )}
 
                     <button
+                        data-testid="login-submit"
                         type="submit"
                         className="w-full bg-gradient-to-r from-primary to-emerald-600 hover:from-primary/90 hover:to-emerald-600/90 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
@@ -122,7 +126,7 @@ export default function Login() {
                 </form>
 
                 <p className="mt-6 text-center text-slate-500 text-xs">
-                    ¿No tienes cuenta? <Link to="/register" className="text-primary hover:underline">Regístrate aquí</Link>
+                    ¿No tienes cuenta? <Link data-testid="go-register" to="/register" className="text-primary hover:underline">Regístrate aquí</Link>
                 </p>
                 <p className="mt-2 text-center text-slate-500 text-[10px]">
                     Protegido por Encriptación AES-256

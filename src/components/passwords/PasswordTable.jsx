@@ -1,12 +1,18 @@
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, Trash2, ExternalLink, Shield, AlertTriangle } from 'lucide-react';
+import { Copy, Eye, EyeOff, Trash2, ExternalLink, Shield, AlertTriangle, Edit, Share2, Clock, Star } from 'lucide-react';
 import { usePasswords } from '../../context/PasswordContext';
 import { calculateCrackTime, getSecurityEmoji } from '../../lib/passwordSecurity';
 import { cn } from '../../lib/utils';
+import EditPasswordModal from './EditPasswordModal';
+import SharePasswordModal from './SharePasswordModal';
+import PasswordHistoryModal from './PasswordHistoryModal';
 
 export default function PasswordTable({ items }) {
-    const { deletePassword } = usePasswords();
+    const { deletePassword, toggleFavorite } = usePasswords();
     const [visiblePasswords, setVisiblePasswords] = useState({});
+    const [editingItem, setEditingItem] = useState(null);
+    const [sharingItem, setSharingItem] = useState(null);
+    const [historyItem, setHistoryItem] = useState(null);
 
     const togglePassword = (id) => {
         setVisiblePasswords(prev => ({
@@ -41,7 +47,7 @@ export default function PasswordTable({ items }) {
                 </thead>
                 <tbody className="divide-y divide-slate-700">
                     {items.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-800/30 transition-colors group">
+                        <tr key={item.id} data-testid={`password-row-${item.id}`} className="hover:bg-slate-800/30 transition-colors group">
                             <td className="p-4">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center text-white font-bold border border-white/10">
@@ -132,6 +138,39 @@ export default function PasswordTable({ items }) {
                             <td className="p-4 text-right">
                                 <div className="flex items-center justify-end gap-1">
                                     <button
+                                        onClick={() => toggleFavorite(item.id)}
+                                        className={cn(
+                                            "p-2 rounded-lg transition-colors",
+                                            item.isFavorite ? "text-warning hover:bg-warning/10" : "text-slate-400 hover:text-warning hover:bg-warning/10"
+                                        )}
+                                        title="Favorito"
+                                    >
+                                        <Star className={cn("w-4 h-4", item.isFavorite && "fill-current")} />
+                                    </button>
+                                    <button
+                                        onClick={() => setHistoryItem(item)}
+                                        className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"
+                                        title="Historial"
+                                    >
+                                        <Clock className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        data-testid={`password-table-share-${item.id}`}
+                                        onClick={() => setSharingItem(item)}
+                                        className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                                        title="Compartir"
+                                    >
+                                        <Share2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => setEditingItem(item)}
+                                        className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                                        title="Editar"
+                                    >
+                                        <Edit className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        data-testid={`password-table-delete-${item.id}`}
                                         onClick={() => handleDelete(item.id)}
                                         className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
                                         title="Eliminar"
@@ -144,6 +183,30 @@ export default function PasswordTable({ items }) {
                     ))}
                 </tbody>
             </table>
+
+            {editingItem && (
+                <EditPasswordModal
+                    isOpen={!!editingItem}
+                    onClose={() => setEditingItem(null)}
+                    password={editingItem}
+                />
+            )}
+
+            {sharingItem && (
+                <SharePasswordModal
+                    isOpen={!!sharingItem}
+                    onClose={() => setSharingItem(null)}
+                    passwordItem={sharingItem}
+                />
+            )}
+
+            {historyItem && (
+                <PasswordHistoryModal
+                    isOpen={!!historyItem}
+                    onClose={() => setHistoryItem(null)}
+                    passwordItem={historyItem}
+                />
+            )}
         </div>
     );
 }
