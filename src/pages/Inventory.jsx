@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import Layout from '../components/layout/Layout';
 import { Package, Plus, Search, Monitor, Smartphone, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useInventory } from '../context/InventoryContext';

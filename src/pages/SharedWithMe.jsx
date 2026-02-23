@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import Layout from '../components/layout/Layout';
 import { Share2, Clock, User, Shield, Lock } from 'lucide-react';
 import { usePasswords } from '../context/PasswordContext';
 import { useAuth } from '../context/AuthContext';
@@ -37,7 +36,7 @@ export default function SharedWithMe() {
     };
 
     return (
-        <Layout>
+        <>
             {/* Header */}
             <div className="mb-8">
                 <div className="flex items-center gap-3 mb-2">
@@ -125,8 +124,8 @@ export default function SharedWithMe() {
                                     <div className="flex items-center gap-2">
                                         <Shield className="w-4 h-4" />
                                         <span className={`px-2 py-0.5 rounded-full text-xs ${item.share.permission === 'write'
-                                                ? 'bg-green-500/20 text-green-400'
-                                                : 'bg-slate-700 text-slate-300'
+                                            ? 'bg-green-500/20 text-green-400'
+                                            : 'bg-slate-700 text-slate-300'
                                             }`}>
                                             {item.share.permission === 'write' ? 'Puede editar' : 'Solo lectura'}
                                         </span>
@@ -146,6 +145,6 @@ export default function SharedWithMe() {
                     ))}
                 </div>
             )}
-        </Layout>
+        </>
     );
 }

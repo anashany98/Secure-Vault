@@ -9,7 +9,13 @@ let dbModule;
 
 if (useSQLite) {
     console.log('Using SQLite Database');
-    dbModule = require('./sqlite_db');
+    const { Pool } = require('./sqlite_db');
+    const sqlitePool = new Pool();
+    dbModule = {
+        query: (text, params) => sqlitePool.query(text, params),
+        pool: sqlitePool,
+        connect: (cb) => sqlitePool.connect(cb)
+    };
 } else {
     // Default to Postgres
     const pool = new Pool({

@@ -11,8 +11,8 @@ router.get('/', verifyToken, async (req, res) => {
             `SELECT DISTINCT g.* 
          FROM groups g
          LEFT JOIN group_members gm ON g.id = gm.group_id
-         WHERE g.created_by = $1 OR gm.user_id = $1`,
-            [userId]
+         WHERE g.created_by = $1 OR gm.user_id = $2`,
+            [userId, userId]
         );
         res.json(groups.rows);
     } catch (err) {

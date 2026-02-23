@@ -26,7 +26,10 @@ router.post('/', auth, async (req, res) => {
 
         if (company_name) {
             await pool.query(
-                'INSERT INTO app_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+                `INSERT INTO app_config (key, value)
+                 VALUES ($1, $2)
+                 ON CONFLICT (key)
+                 DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
                 ['company_name', company_name]
             );
         }

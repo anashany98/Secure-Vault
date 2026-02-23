@@ -24,7 +24,7 @@ const NoteCard = ({ note, onEdit }) => {
                         <div>
                             <h3 className="font-semibold text-gray-900 dark:text-gray-100">{note.title}</h3>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {new Date(note.updatedAt).toLocaleDateString()}
+                                {new Date(note.updated_at || note.created_at || Date.now()).toLocaleDateString()}
                             </p>
                         </div>
                     </div>
@@ -34,8 +34,8 @@ const NoteCard = ({ note, onEdit }) => {
                             toggleFavoriteNote(note.id);
                         }}
                         className={`p-1.5 rounded-full transition-colors ${note.isFavorite
-                                ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20'
-                                : 'text-gray-300 hover:text-yellow-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20'
+                            : 'text-gray-300 hover:text-yellow-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                             }`}
                     >
                         <Star className={`w-4 h-4 ${note.isFavorite ? 'fill-current' : ''}`} />

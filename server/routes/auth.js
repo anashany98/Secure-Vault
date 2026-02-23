@@ -51,7 +51,6 @@ router.post('/login', loginLimiter, async (req, res) => {
         // Check user
         const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         if (user.rows.length === 0) {
-            // Log failed attempt info if possible (careful with non-existent users)
             auditLog(null, 'LOGIN_FAILED', 'USER', null, `Email: ${email}`, req);
             return res.status(401).json({ message: 'Invalid Credentials' });
         }
@@ -79,14 +78,17 @@ router.post('/login', loginLimiter, async (req, res) => {
         );
 
         // Register Session in DB
-        const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-        const userAgent = req.headers['user-agent'];
+        const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+        const userAgent = req.headers['user-agent'] || 'unknown';
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+        // Fix for SQLite: Convert Date to ISO String
+        const expiresAtStr = expiresAt.toISOString();
 
         await pool.query(
             `INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, expires_at) 
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [sessionId, user.rows[0].id, 'JWT_SESSION', ipAddress, userAgent, expiresAt]
+            [sessionId, user.rows[0].id, 'JWT_SESSION', ipAddress, userAgent, expiresAtStr]
         );
 
         auditLog(user.rows[0].id, 'LOGIN', 'USER', user.rows[0].id, 'Success', req);
@@ -114,7 +116,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         });
 
     } catch (err) {
-        console.error(err.message);
+        console.error("LOGIN ERROR:", err);
         res.status(500).send('Server Error');
     }
 });
@@ -148,11 +150,12 @@ router.post('/login/verify', async (req, res) => {
         const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
         const userAgent = req.headers['user-agent'];
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        const expiresAtStr = expiresAt.toISOString();
 
         await pool.query(
             `INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, expires_at) 
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [sessionId, user.rows[0].id, 'JWT_SESSION', ipAddress, userAgent, expiresAt]
+            [sessionId, user.rows[0].id, 'JWT_SESSION', ipAddress, userAgent, expiresAtStr]
         );
 
         res.json({
@@ -178,7 +181,9 @@ router.get('/sessions', verifyToken, async (req, res) => {
             `SELECT id, ip_address, user_agent, last_active, created_at, 
              (id = $1) as is_current
              FROM sessions 
-             WHERE user_id = $2 AND is_revoked = false AND expires_at > NOW()
+             WHERE user_id = $2
+               AND is_revoked = false
+               AND (expires_at IS NULL OR julianday(expires_at) > julianday('now'))
              ORDER BY created_at DESC`,
             [req.user.sessionId, req.user.id]
         );

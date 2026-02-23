@@ -8,7 +8,7 @@ const NotesContext = createContext();
 
 export const useNotes = () => useContext(NotesContext);
 
-const ENCRYPTION_KEY = 'demo-secret-key-change-this-in-prod';
+const ENCRYPTION_KEY = import.meta.env.VITE_NOTES_KEY || 'demo-secret-key-change-this-in-prod';
 
 export const NotesProvider = ({ children }) => {
     const { user } = useAuth();

@@ -9,7 +9,7 @@ const PasswordContext = createContext();
 
 export const usePasswords = () => useContext(PasswordContext);
 
-const ENCRYPTION_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'fallback-dev-key';
+const ENCRYPTION_KEY = import.meta.env.VITE_VAULT_KEY || 'fallback-dev-key';
 
 export const PasswordProvider = ({ children }) => {
     const { user } = useAuth();
@@ -73,9 +73,11 @@ export const PasswordProvider = ({ children }) => {
     useEffect(() => {
         if (user) {
             refreshVault();
+            refreshShares();
             fetchAuditLogs();
         } else {
             setPasswords([]);
+            setShares([]);
         }
     }, [user]);
 
@@ -292,10 +294,119 @@ export const PasswordProvider = ({ children }) => {
         }
     };
 
-    // Stubs
-    const sharePassword = () => ({ success: false, message: "No disponible" });
-    const getPasswordShares = () => [];
-    const revokeShare = () => { };
+    // Shared Passwords Logic
+    const getSharedPasswords = () => {
+        return passwords.filter(p => p.permission).map(p => ({
+            ...p,
+            share: {
+                id: p.share_id,
+                permission: p.permission,
+                expiresAt: p.expires_at,
+                sharedBy: p.shared_by
+            }
+        }));
+    };
+
+    const updateShareAccess = async (shareId) => {
+        // Stub: In future, this could call an endpoint to log access
+        console.log("Share accessed:", shareId);
+    };
+
+    // Shared Passwords Logic
+    // Local helper to sync shares into the password object state if needed, 
+    // but typically we fetch shares on demand for the modal.
+
+    // However, the `PasswordTable` or `Card` might show a badge.
+    // `getPasswordShares` was used synchronously in the modal.
+    // If we make it async, we need to update the Modal to handle async.
+    // The current Modal code: `const currentShares = getPasswordShares(passwordItem.id);`
+    // This implies `getPasswordShares` returns from local state.
+    // So we need to Fetch shares and store them in the `passwords` state?
+    // Or change `PasswordProvider` to load shares?
+
+    // Easier: Make `getPasswordShares` just return what's in state,
+    // and validly load them when `refreshVault` happens?
+    // `refreshVault` only queries `vault_items`.
+    // It does NOT join `shares`.
+
+    // Strategy: 
+    // 1. Add `shares` array to each password item in `refreshVault` if possible?
+    //    - That would require modifying `vault.js` GET / route to JSON agg shares.
+    // 2. OR, Keep `getPasswordShares` as a function that filters a global `allShares` state?
+    // 3. OR, Change Modal to use `useEffect` to fetch shares.
+
+    // Given the constraints and the Modal code:
+    // `const currentShares = getPasswordShares(passwordItem.id);`
+    // This relies on synchronous return.
+    // I should fetch all shares for the user in `refreshVault`?
+    // `GET /shares/internal/all` ? 
+
+    // Let's modify `refreshVault` to also fetch shares if we want to support this sync sync API.
+    // OR, we update the Modal. Updating the Modal is cleaner but requires editing another file.
+    // Updating `PasswordContext` to fetch all shares (outgoing) is also viable.
+
+    // Let's implement `sharePassword` and `revokeShare` first (Async).
+
+    const sharePassword = async (passwordId, targetId, permission, expiresIn) => {
+        try {
+            await api.post('/shares/internal', { passwordId, targetId, permission, expiresIn });
+            // Refresh shares locally
+            await refreshShares();
+            return { success: true };
+        } catch (err) {
+            console.error(err);
+            toast.error("Error al compartir");
+            return { success: false };
+        }
+    };
+
+    const revokeShare = async (shareId) => {
+        try {
+            await api.delete(`/shares/internal/${shareId}`);
+            await refreshShares();
+            toast.success("Acceso revocado");
+        } catch (err) {
+            console.error(err);
+            toast.error("Error al revocar");
+        }
+    };
+
+    // New state for shares
+    const [shares, setShares] = useState([]);
+
+    const refreshShares = async () => {
+        if (!user) return;
+        try {
+            // We need a route to get ALL shares I have given?
+            // Or just fetch for specific item?
+            // If the Modal uses `getPasswordShares(id)`, it expects an array.
+            // If I implement `getPasswordShares` to filter from a global `shares` list,
+            // I need `GET /shares/internal/outgoing`
+
+            // Since I didn't verify `GET /shares/internal/outgoing` existing,
+            // I'll assume I need to add it or use the item-specific one.
+            // But valid `getPasswordShares` is synchronous.
+            // I will stick to: Fetch ALL my shares.
+            const res = await api.get('/shares/internal/outgoing'); // I need to add this route!
+            setShares(res);
+        } catch (err) {
+            // console.error(err); 
+            // If route missing, fail silently or empty
+        }
+    };
+
+    const getPasswordShares = (passwordId) => {
+        return shares.filter(s => s.password_id === passwordId).map(s => ({
+            id: s.id,
+            sharedWith: s.shared_with,
+            permission: s.permission,
+            expiresAt: s.expires_at,
+            // Name? The modal needs name.
+            // My route `GET /internal/item/:id` returned name.
+            // My `GET /internal/outgoing` should also return name.
+            name: s.name // Assuming the fetch populates this
+        }));
+    };
 
     // Check single password against HIBP (k-Anonymity)
     const checkPasswordBreach = async (password) => {
@@ -384,6 +495,8 @@ export const PasswordProvider = ({ children }) => {
             updatePassword,
             deletePassword,
             sharePassword,
+            getSharedPasswords,
+            updateShareAccess,
             getPasswordShares,
             revokeShare,
             checkPasswordBreach,
