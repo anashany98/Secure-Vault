@@ -32,3 +32,21 @@ dist-ssr
 playwright-report/
 test-results/
 blob-report/
+
+# Local runtime artifacts
+output/
+server/backups/
+server/*.db
+server/*.db-shm
+server/*.db-wal
+
+# Local scratch/debug files
+check_users.js
+test_login.js
+test_output.txt
+server/check_users.js
+server/test_login.js
+server/reset_password.js
+scripts/check_db_schema.js
+scripts/test_sqlite_insert.js
+scripts/verify_sharing_backend.js
