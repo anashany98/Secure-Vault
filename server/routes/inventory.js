@@ -41,7 +41,7 @@ router.put('/:id', verifyToken, async (req, res) => {
         const { type, brand, model, serial_number, status, assigned_to, location, notes } = req.body;
 
         const updateItem = await pool.query(
-            `UPDATE devices SET type = $1, brand = $2, model = $3, serial_number = $4, status = $5, assigned_to = $6, location = $7, notes = $8, updated_at = NOW()
+            `UPDATE devices SET type = $1, brand = $2, model = $3, serial_number = $4, status = $5, assigned_to = $6, location = $7, notes = $8, updated_at = CURRENT_TIMESTAMP
        WHERE id = $9 RETURNING *`,
             [type, brand, model, serial_number, status, assigned_to, location, notes, id]
         );

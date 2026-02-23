@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS vault_items (
     meta_person TEXT,
     is_favorite BOOLEAN DEFAULT 0,
     is_deleted BOOLEAN DEFAULT 0,
+    deleted_at DATETIME,
+    tags TEXT, -- JSON array
+    custom_fields TEXT, -- JSON array
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -70,7 +73,29 @@ CREATE TABLE IF NOT EXISTS notes (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. GROUPS TABLE
+-- 6. EMPLOYEES TABLE
+CREATE TABLE IF NOT EXISTS employees (
+    id TEXT PRIMARY KEY DEFAULT (uuid_generate_v4()),
+    full_name TEXT NOT NULL,
+    email TEXT,
+    department TEXT,
+    job_title TEXT,
+    status TEXT DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 7. APP CONFIG TABLE
+CREATE TABLE IF NOT EXISTS app_config (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO app_config (key, value)
+VALUES ('company_name', 'Mi Empresa')
+ON CONFLICT(key) DO NOTHING;
+
+-- 8. GROUPS TABLE
 CREATE TABLE IF NOT EXISTS groups (
     id TEXT PRIMARY KEY DEFAULT (uuid_generate_v4()),
     name TEXT NOT NULL,
@@ -80,7 +105,7 @@ CREATE TABLE IF NOT EXISTS groups (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 7. GROUP MEMBERS TABLE
+-- 9. GROUP MEMBERS TABLE
 CREATE TABLE IF NOT EXISTS group_members (
     id TEXT PRIMARY KEY DEFAULT (uuid_generate_v4()),
     group_id TEXT REFERENCES groups(id) ON DELETE CASCADE,
@@ -90,7 +115,7 @@ CREATE TABLE IF NOT EXISTS group_members (
     UNIQUE(group_id, user_id)
 );
 
--- 8. SHARES TABLE
+-- 10. SHARES TABLE
 CREATE TABLE IF NOT EXISTS shares (
     id TEXT PRIMARY KEY DEFAULT (uuid_generate_v4()),
     password_id TEXT REFERENCES vault_items(id) ON DELETE CASCADE,
@@ -101,7 +126,18 @@ CREATE TABLE IF NOT EXISTS shares (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 9. SESSIONS TABLE (Added from observation of auth.js usage)
+-- 10B. PUBLIC SHARES TABLE
+CREATE TABLE IF NOT EXISTS public_shares (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    type TEXT DEFAULT 'password',
+    expires_at DATETIME NOT NULL,
+    views_left INTEGER DEFAULT 1,
+    max_views INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 11. SESSIONS TABLE (Added from observation of auth.js usage)
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
@@ -114,7 +150,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_active DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 10. AUDIT LOGS TABLE (Added from auditLogger.js observation)
+-- 12. AUDIT LOGS TABLE (Added from auditLogger.js observation)
 CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY DEFAULT (uuid_generate_v4()),
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -133,6 +169,8 @@ CREATE INDEX IF NOT EXISTS idx_vault_items_title ON vault_items(title);
 CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
 CREATE INDEX IF NOT EXISTS idx_devices_assigned_to ON devices(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id);
+CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status);
 CREATE INDEX IF NOT EXISTS idx_group_members_user_id ON group_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id);
 CREATE INDEX IF NOT EXISTS idx_shares_shared_with ON shares(shared_with);
+CREATE INDEX IF NOT EXISTS idx_public_shares_expires_at ON public_shares(expires_at);

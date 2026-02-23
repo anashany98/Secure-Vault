@@ -17,7 +17,7 @@ router.get('/', verifyToken, async (req, res) => {
 
         // 2. Shared items (Joined)
         const sharedItems = await pool.query(
-            `SELECT v.*, s.permission, s.expires_at 
+            `SELECT v.*, s.id AS share_id, s.permission, s.expires_at, s.shared_by
          FROM vault_items v
          JOIN shares s ON v.id = s.password_id
          WHERE s.shared_with = $1`,
@@ -93,7 +93,7 @@ router.put('/:id', verifyToken, async (req, res) => {
         }
 
         const updateItem = await pool.query(
-            `UPDATE vault_items SET title = $1, username = $2, encrypted_password = $3, url = $4, meta_person = $5, is_favorite = $6, tags = $7, custom_fields = $8, updated_at = NOW()
+            `UPDATE vault_items SET title = $1, username = $2, encrypted_password = $3, url = $4, meta_person = $5, is_favorite = $6, tags = $7, custom_fields = $8, updated_at = CURRENT_TIMESTAMP
        WHERE id = $9 RETURNING *`,
             [title, username, encrypted_password, url, meta_person, is_favorite, tags, custom_fields, id]
         );
@@ -125,7 +125,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
         } else {
             // Soft Delete
             await pool.query(
-                'UPDATE vault_items SET is_deleted = true, deleted_at = NOW() WHERE id = $1',
+                'UPDATE vault_items SET is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = $1',
                 [id]
             );
             return res.json("Item moved to trash");
@@ -173,7 +173,7 @@ router.post('/import', verifyToken, async (req, res) => {
 
             await client.query(
                 `INSERT INTO vault_items (user_id, title, username, encrypted_password, url, meta_person, is_favorite, tags, custom_fields, created_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)`,
                 [
                     req.user.id,
                     item.title,
@@ -186,53 +186,52 @@ router.post('/import', verifyToken, async (req, res) => {
                     item.custom_fields || []
                 ]
             );
-            );
-importedCount++;
+            importedCount++;
 
-// Auto-create Employee/Person from meta_person or username
-const personName = item.meta_person || item.username;
-if (personName && typeof personName === 'string' && personName.length > 2) {
-    // Determine if it's an email
-    const isEmail = personName.includes('@');
-    const emailVal = isEmail ? personName : null;
-    const nameVal = personName;
+            // Auto-create Employee/Person from meta_person or username
+            const personName = item.meta_person || item.username;
+            if (personName && typeof personName === 'string' && personName.length > 2) {
+                // Determine if it's an email
+                const isEmail = personName.includes('@');
+                const emailVal = isEmail ? personName : null;
+                const nameVal = personName;
 
-    // Check and Insert if not exists (Basic check to avoid spamming duplicates in one batch)
-    // Note: Ideally this should be a bulk insert or ON CONFLICT, but for now we do a quick check
-    // We use a separate query ensuring we don't break the transaction if it fails (caught in try/catch internally or ignored)
-    try {
-        // Check if exists by name or email
-        const checkEmp = await client.query(
-            `SELECT id FROM employees WHERE full_name = $1 OR (email IS NOT NULL AND email = $2)`,
-            [nameVal, emailVal || '']
-        );
+                // Check and Insert if not exists (Basic check to avoid spamming duplicates in one batch)
+                // Note: Ideally this should be a bulk insert or ON CONFLICT, but for now we do a quick check
+                // We use a separate query ensuring we don't break the transaction if it fails (caught in try/catch internally or ignored)
+                try {
+                    // Check if exists by name or email
+                    const checkEmp = await client.query(
+                        `SELECT id FROM employees WHERE full_name = $1 OR (email IS NOT NULL AND email = $2)`,
+                        [nameVal, emailVal || '']
+                    );
 
-        if (checkEmp.rows.length === 0) {
-            await client.query(
-                `INSERT INTO employees (full_name, email, status) VALUES ($1, $2, 'active')`,
-                [nameVal, emailVal]
-            );
-            console.log(`Auto-created employee from import: ${nameVal}`);
+                    if (checkEmp.rows.length === 0) {
+                        await client.query(
+                            `INSERT INTO employees (full_name, email, status) VALUES ($1, $2, 'active')`,
+                            [nameVal, emailVal]
+                        );
+                        console.log(`Auto-created employee from import: ${nameVal}`);
+                    }
+                } catch (empErr) {
+                    console.warn(`Failed to auto-create employee for ${personName}:`, empErr.message);
+                    // Do not fail the whole import for this
+                }
+            }
         }
-    } catch (empErr) {
-        console.warn(`Failed to auto-create employee for ${personName}:`, empErr.message);
-        // Do not fail the whole import for this
-    }
-}
-        }
 
-await client.query('COMMIT');
+        await client.query('COMMIT');
 
-auditLog(req.user.id, 'IMPORT_CSV', 'VAULT', null, `Imported ${importedCount} items`, req);
+        auditLog(req.user.id, 'IMPORT_CSV', 'VAULT', null, `Imported ${importedCount} items`, req);
 
-res.json({ message: "Importación completada", count: importedCount });
+        res.json({ message: "Importación completada", count: importedCount });
     } catch (err) {
-    await client.query('ROLLBACK');
-    console.error("IMPORT FAILED:", err);
-    res.status(500).send('Server Error during import: ' + err.message);
-} finally {
-    client.release();
-}
+        await client.query('ROLLBACK');
+        console.error("IMPORT FAILED:", err);
+        res.status(500).send('Server Error during import: ' + err.message);
+    } finally {
+        client.release();
+    }
 });
 
 // RESTORE FROM BACKUP (Wipe and Replace)
@@ -249,7 +248,7 @@ router.post('/restore', verifyToken, async (req, res) => {
         for (const item of items) {
             await client.query(
                 `INSERT INTO vault_items (user_id, title, username, encrypted_password, url, meta_person, is_favorite, created_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
                 [
                     req.user.id,
                     item.title,

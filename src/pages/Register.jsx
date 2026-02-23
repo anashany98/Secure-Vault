@@ -10,9 +10,9 @@ export default function Register() {
     const [error, setError] = useState('');
     const { register } = useAuth();
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const result = register(name, email, password);
+        const result = await register(name, email, password);
         if (!result.success) {
             setError(result.error);
         }

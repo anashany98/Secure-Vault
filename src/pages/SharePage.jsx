@@ -14,14 +14,27 @@ export default function SharePage() {
     const [isRevealed, setIsRevealed] = useState(false);
 
     useEffect(() => {
-        const result = getShare(id);
-        if (result.error) {
-            setStatus('error');
-            setError(result.error);
-        } else {
+        let cancelled = false;
+
+        const loadShare = async () => {
+            const result = await getShare(id);
+            if (cancelled) return;
+
+            if (result.error) {
+                setStatus('error');
+                setError(result.error);
+                return;
+            }
+
             setData(result.data);
             setStatus('ready');
-        }
+        };
+
+        loadShare();
+
+        return () => {
+            cancelled = true;
+        };
     }, [id, getShare]);
 
     const handleReveal = async () => {
@@ -29,7 +42,7 @@ export default function SharePage() {
 
         const secret = await consumeShare(id); // Returns { encryptedData, type }
         if (secret) {
-            setData(prev => ({ ...prev, ...secret }));
+            setData(prev => ({ ...(prev || {}), ...secret }));
             setIsRevealed(true);
             setStatus('viewed');
         } else {

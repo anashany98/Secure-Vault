@@ -67,14 +67,15 @@ router.get('/:id', async (req, res) => {
 router.post('/:id/reveal', async (req, res) => {
     try {
         const { id } = req.params;
+        const nowIso = new Date().toISOString();
 
         // Atomic check and update
         const update = await pool.query(
             `UPDATE public_shares 
              SET views_left = views_left - 1 
-             WHERE id = $1 AND views_left > 0 AND expires_at > NOW()
+             WHERE id = $1 AND views_left > 0 AND expires_at > $2
              RETURNING data, type, views_left`,
-            [id]
+            [id, nowIso]
         );
 
         if (update.rows.length === 0) {
@@ -89,6 +90,119 @@ router.post('/:id/reveal', async (req, res) => {
             type: share.type
         });
 
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+const verifyToken = require('../middleware/auth');
+
+// === INTERNAL SHARING (User-to-User) ===
+
+// SHARE PASSWORD WITH USER
+router.post('/internal', verifyToken, async (req, res) => {
+    try {
+        const { passwordId, targetId, permission, expiresIn } = req.body;
+        const sharedBy = req.user.id; // From token
+
+        // Calculate expiration proper
+        // expiresIn is ms coming from frontend? or date?
+        // Frontend sends ms (e.g. 7*24*60... or null)
+        let expiresAt = null;
+        if (expiresIn) {
+            expiresAt = new Date(Date.now() + expiresIn);
+        }
+
+        // Check if already shared
+        const existing = await pool.query(
+            'SELECT id FROM shares WHERE password_id = $1 AND shared_with = $2',
+            [passwordId, targetId]
+        );
+
+        if (existing.rows.length > 0) {
+            // Update existing
+            await pool.query(
+                'UPDATE shares SET permission = $1, expires_at = $2 WHERE id = $3',
+                [permission, expiresAt, existing.rows[0].id]
+            );
+            return res.json({ success: true, message: "Updated existing share" });
+        }
+
+        // Create new
+        const newShare = await pool.query(
+            `INSERT INTO shares (password_id, shared_by, shared_with, permission, expires_at)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id`,
+            [passwordId, sharedBy, targetId, permission, expiresAt]
+        );
+
+        res.json({ success: true, id: newShare.rows[0].id });
+
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+// GET SHARES FOR A PASSWORD
+router.get('/internal/item/:passwordId', verifyToken, async (req, res) => {
+    try {
+        const { passwordId } = req.params;
+        // Verify ownership or permission?
+        // For now, allow if user has access to the vault item.
+        // TODO: Strict check if user is owner or admin
+
+        const shares = await pool.query(
+            `SELECT s.id, s.shared_with as "sharedWith", s.permission, s.expires_at as "expiresAt", u.name
+             FROM shares s
+             JOIN users u ON s.shared_with = u.id
+             WHERE s.password_id = $1`,
+            [passwordId]
+        );
+
+        res.json(shares.rows);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+// GET ALL SHARES CREATED BY ME (Outgoing)
+router.get('/internal/outgoing', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const shares = await pool.query(
+            `SELECT s.id, s.password_id, s.shared_with, s.permission, s.expires_at, u.name
+             FROM shares s
+             JOIN users u ON s.shared_with = u.id
+             WHERE s.shared_by = $1`,
+            [userId]
+        );
+        res.json(shares.rows);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+// REVOKE SHARE
+router.delete('/internal/:id', verifyToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        // Ensure user owns the share or the item?
+        // Simple check: shared_by must be current user
+        const check = await pool.query('SELECT shared_by FROM shares WHERE id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ error: "Share not found" });
+
+        if (check.rows[0].shared_by !== userId) {
+            return res.status(403).json({ error: "Unauthorized" });
+        }
+
+        await pool.query('DELETE FROM shares WHERE id = $1', [id]);
+        res.json({ success: true });
     } catch (err) {
         console.error(err.message);
         res.status(500).send('Server Error');

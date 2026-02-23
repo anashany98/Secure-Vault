@@ -44,7 +44,7 @@ router.put('/:id', verifyToken, async (req, res) => {
         if (checkOwner.rows[0].user_id !== req.user.id) return res.status(403).json("Not Authorized");
 
         const updateNote = await pool.query(
-            'UPDATE notes SET title = $1, content = $2, is_favorite = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
+            'UPDATE notes SET title = $1, content = $2, is_favorite = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
             [title, content, is_favorite, id]
         );
 
@@ -66,7 +66,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
         if (checkOwner.rows[0].user_id !== req.user.id) return res.status(403).json("Not Authorized");
 
         await pool.query(
-            'UPDATE notes SET is_deleted = true, deleted_at = NOW() WHERE id = $1',
+            'UPDATE notes SET is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = $1',
             [id]
         );
 

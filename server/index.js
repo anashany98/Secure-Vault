@@ -7,6 +7,7 @@ const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+let pgPool = null;
 
 const { apiLimiter } = require('./middleware/rateLimiter');
 const { ipBlocker } = require('./middleware/ipBlocker');
@@ -30,18 +31,24 @@ app.use(ipBlocker);
 app.use('/api/', apiLimiter);
 
 // Database Pool
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-});
+if (process.env.DB_CLIENT !== 'sqlite') {
+    if (process.env.DATABASE_URL) {
+        pgPool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+        });
 
-// Test DB Connection
-pool.connect((err, client, release) => {
-    if (err) {
-        return console.error('Error acquiring client', err.stack);
+        // Test DB Connection
+        pgPool.connect((err, client, release) => {
+            if (err) {
+                return console.error('Error acquiring client', err.stack);
+            }
+            console.log('Database connected successfully');
+            release();
+        });
+    } else if (process.env.NODE_ENV !== 'test') {
+        console.warn('DATABASE_URL not set, skipping Postgres connection bootstrap');
     }
-    console.log('Database connected successfully');
-    release();
-});
+}
 
 // Routes
 // Routes
@@ -68,9 +75,11 @@ if (process.env.NODE_ENV !== 'test') {
 
 // Handle shutdown
 process.on('SIGTERM', () => {
-    pool.end(() => {
-        console.log('Pool has ended');
-    });
+    if (pgPool) {
+        pgPool.end(() => {
+            console.log('Pool has ended');
+        });
+    }
 });
 
 module.exports = app;
