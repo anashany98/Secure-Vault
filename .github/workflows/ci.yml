@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Install backend deps
+        run: npm ci
+        working-directory: server
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run frontend unit tests
+        run: npm test -- --run
+
+      - name: Run backend unit tests
+        run: npm test -- --run
+        working-directory: server
+        env:
+          DB_CLIENT: sqlite
+          SQLITE_DB_PATH: secure_vault.ci.db
+          JWT_SECRET: ci-jwt-secret
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report
+            test-results
