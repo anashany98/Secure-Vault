@@ -1,176 +1,236 @@
 import { useState } from 'react';
-import { Eye, EyeOff, Copy, Clipboard, Star, Trash2, Edit, ExternalLink, History, Share2, AlertTriangle, Clock, Globe, RotateCcw, XCircle, Shield } from 'lucide-react';
+import {
+    AlertTriangle,
+    Clipboard,
+    Clock,
+    Copy,
+    Edit,
+    Eye,
+    EyeOff,
+    Files,
+    Globe,
+    RotateCcw,
+    Share2,
+    Shield,
+    Star,
+    Trash2,
+    XCircle,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+
 import { usePasswords } from '../../context/PasswordContext';
 import { useUsage } from '../../context/UsageContext';
 import { calculateCrackTime, getSecurityEmoji } from '../../lib/passwordSecurity';
-import PasswordHistoryModal from './PasswordHistoryModal';
-import EditPasswordModal from './EditPasswordModal';
-import SharePasswordModal from './SharePasswordModal';
-import toast from 'react-hot-toast';
-
 import { cn } from '../../lib/utils';
+import EditPasswordModal from './EditPasswordModal';
+import PasswordHistoryModal from './PasswordHistoryModal';
+import SharePasswordModal from './SharePasswordModal';
+
+function isReviewDue(item) {
+    if (!item.nextReviewAt) {
+        return false;
+    }
+
+    const timestamp = new Date(item.nextReviewAt).getTime();
+    return !Number.isNaN(timestamp) && timestamp <= Date.now() + 7 * 24 * 60 * 60 * 1000;
+}
 
 export default function PasswordCard({ item, onClick, onShare }) {
     const [showPassword, setShowPassword] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [isShareOpen, setIsShareOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
-    const { deletePassword, toggleFavorite, restorePassword, permanentlyDeletePassword, getPasswordShares, checkPasswordForBreach } = usePasswords();
+    const {
+        deletePassword,
+        duplicatePassword,
+        getPasswordShares,
+        permanentlyDeletePassword,
+        restorePassword,
+        toggleFavorite,
+    } = usePasswords();
     const { trackCopy } = useUsage();
-    // const { currentView } = useView();
+
+    const stop = (handler) => (event) => {
+        event.stopPropagation();
+        handler();
+    };
 
     const copyToClipboard = (text, label = 'Texto') => {
         navigator.clipboard.writeText(text);
-        trackCopy(); // Track copy action
-        toast.success(`✅ ${label} copiado`);
+        trackCopy();
+        toast.success(`${label} copiado`);
     };
 
     const copyAll = () => {
-        const text = `${item.username}\t${item.password}`;
-        navigator.clipboard.writeText(text);
-        trackCopy(); // Track copy action
-        toast.success('✅ Usuario y contraseña copiados');
+        navigator.clipboard.writeText(`${item.username}\t${item.password}`);
+        trackCopy();
+        toast.success('Usuario y contrasena copiados');
     };
 
     return (
         <div
             data-testid={`password-card-${item.id}`}
+            onClick={onClick}
             className={cn(
-            "bg-surface border border-slate-700 rounded-xl p-5 hover:border-primary/50 transition-all group relative",
-            item.isDeleted && "opacity-75 grayscale hover:grayscale-0"
-        )}>
-            <div className="absolute top-4 right-4 flex gap-2">
+                'group relative rounded-xl border border-slate-700 bg-surface p-5 transition-all hover:border-primary/50',
+                onClick && 'cursor-pointer',
+                item.isDeleted && 'opacity-75 grayscale hover:grayscale-0'
+            )}
+        >
+            <div className="absolute right-4 top-4 flex gap-2">
                 {item.isDeleted ? (
                     <>
                         <button
                             data-testid={`password-restore-${item.id}`}
-                            onClick={() => restorePassword(item.id)}
-                            className="text-primary hover:text-emerald-400 p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                            onClick={stop(() => restorePassword(item.id))}
+                            className="rounded-lg p-1 text-primary transition-colors hover:bg-slate-800 hover:text-emerald-400"
                             title="Restaurar"
                         >
-                            <RotateCcw className="w-4 h-4" />
+                            <RotateCcw className="h-4 w-4" />
                         </button>
                         <button
                             data-testid={`password-hard-delete-${item.id}`}
-                            onClick={() => permanentlyDeletePassword(item.id)}
-                            className="text-danger hover:text-red-400 p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                            onClick={stop(() => permanentlyDeletePassword(item.id))}
+                            className="rounded-lg p-1 text-danger transition-colors hover:bg-slate-800 hover:text-red-400"
                             title="Eliminar permanentemente"
                         >
-                            <XCircle className="w-4 h-4" />
+                            <XCircle className="h-4 w-4" />
                         </button>
                     </>
                 ) : (
                     <>
                         <button
-                            onClick={() => toggleFavorite(item.id)}
+                            onClick={stop(() => toggleFavorite(item.id))}
                             className={cn(
-                                "p-1 rounded-lg hover:bg-slate-800 transition-colors",
-                                item.isFavorite ? "text-warning fill-warning" : "text-slate-500 hover:text-warning"
+                                'rounded-lg p-1 transition-colors hover:bg-slate-800',
+                                item.isFavorite ? 'fill-warning text-warning' : 'text-slate-500 hover:text-warning'
                             )}
                             title="Favorito"
                         >
-                            <Star className="w-4 h-4" />
+                            <Star className="h-4 w-4" />
                         </button>
                         <button
-                            onClick={() => setIsHistoryOpen(true)}
-                            className="text-slate-500 hover:text-blue-400 p-1 rounded-lg hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100 relative"
+                            onClick={stop(() => duplicatePassword(item.id))}
+                            className="rounded-lg p-1 text-slate-500 opacity-0 transition-colors hover:bg-slate-800 hover:text-white group-hover:opacity-100"
+                            title="Duplicar"
+                        >
+                            <Files className="h-4 w-4" />
+                        </button>
+                        <button
+                            onClick={stop(() => setIsHistoryOpen(true))}
+                            className="relative rounded-lg p-1 text-slate-500 opacity-0 transition-colors hover:bg-slate-800 hover:text-blue-400 group-hover:opacity-100"
                             title="Ver historial"
                         >
-                            <Clock className="w-4 h-4" />
-                            {item.history && item.history.length > 0 && (
-                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                    {item.history.length}
+                            <Clock className="h-4 w-4" />
+                        </button>
+                        <button
+                            onClick={stop(() => setIsEditOpen(true))}
+                            className="rounded-lg p-1 text-slate-500 opacity-0 transition-colors hover:bg-slate-800 hover:text-primary group-hover:opacity-100"
+                            title="Editar"
+                        >
+                            <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                            data-testid={`password-share-${item.id}`}
+                            onClick={stop(() => {
+                                if (onShare) {
+                                    onShare();
+                                    return;
+                                }
+                                setIsShareOpen(true);
+                            })}
+                            className="relative rounded-lg p-1 text-slate-500 opacity-0 transition-colors hover:bg-slate-800 hover:text-primary group-hover:opacity-100"
+                            title="Compartir"
+                        >
+                            <Share2 className="h-4 w-4" />
+                            {getPasswordShares(item.id).length > 0 && (
+                                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">
+                                    {getPasswordShares(item.id).length}
                                 </span>
                             )}
                         </button>
                         <button
-                            onClick={() => setIsEditOpen(true)}
-                            className="text-slate-500 hover:text-primary p-1 rounded-lg hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100"
-                            title="Editar"
-                        >
-                            <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                            data-testid={`password-share-${item.id}`}
-                            onClick={onShare ? onShare : () => setIsShareOpen(true)}
-                            className="text-slate-500 hover:text-primary p-1 rounded-lg hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100 relative"
-                            title="Compartir"
-                        >
-                            <Share2 className="w-4 h-4" />
-                            {(() => {
-                                const shares = getPasswordShares(item.id);
-                                return shares.length > 0 && (
-                                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                        {shares.length}
-                                    </span>
-                                );
-                            })()}
-                        </button>
-                        <button
                             data-testid={`password-delete-${item.id}`}
-                            onClick={() => deletePassword(item.id)}
-                            className="text-slate-500 hover:text-danger p-1 rounded-lg hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100"
+                            onClick={stop(() => deletePassword(item.id))}
+                            className="rounded-lg p-1 text-slate-500 opacity-0 transition-colors hover:bg-slate-800 hover:text-danger group-hover:opacity-100"
                             title="Mover a papelera"
                         >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-4 w-4" />
                         </button>
                     </>
                 )}
             </div>
 
-            <div className="flex items-start gap-4 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center text-xl font-bold text-white shrink-0">
+            <div className="mb-4 flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-xl font-bold text-white">
                     {item.title.charAt(0).toUpperCase()}
                 </div>
-                <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-semibold truncate pr-16">{item.title}</h3>
-                    <p className="text-slate-400 text-sm truncate">{item.username}</p>
+                <div className="min-w-0 flex-1">
+                    <h3 className="truncate pr-20 font-semibold text-white">{item.title}</h3>
+                    <p className="truncate text-sm text-slate-400">{item.username}</p>
                 </div>
             </div>
 
+            {!item.isDeleted && (item.checkedOutBy || isReviewDue(item)) && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                    {item.checkedOutBy && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-400">
+                            <Clock className="h-3 w-3" />
+                            Checkout activo
+                        </span>
+                    )}
+                    {isReviewDue(item) && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-400">
+                            <AlertTriangle className="h-3 w-3" />
+                            Revision pendiente
+                        </span>
+                    )}
+                </div>
+            )}
+
             <div className="space-y-3">
-                <div className="bg-slate-900/50 rounded-lg p-3 flex items-center justify-between group/field hover:bg-slate-900 transition-colors">
-                    <div className="flex-1 min-w-0 mr-2">
-                        <p className="text-xs text-slate-500 uppercase font-semibold mb-0.5">Usuario</p>
-                        <p className="text-slate-300 text-sm truncate">{item.username}</p>
+                <div className="group/field flex items-center justify-between rounded-lg bg-slate-900/50 p-3 transition-colors hover:bg-slate-900">
+                    <div className="mr-2 min-w-0 flex-1">
+                        <p className="mb-0.5 text-xs font-semibold uppercase text-slate-500">Usuario</p>
+                        <p className="truncate text-sm text-slate-300">{item.username}</p>
                     </div>
                     <button
-                        onClick={() => copyToClipboard(item.username)}
-                        className="text-slate-500 hover:text-white opacity-0 group-hover/field:opacity-100 transition-opacity"
+                        onClick={stop(() => copyToClipboard(item.username, 'Usuario'))}
+                        className="text-slate-500 opacity-0 transition-opacity group-hover/field:opacity-100 hover:text-white"
                         title="Copiar usuario"
                     >
-                        <Copy className="w-4 h-4" />
+                        <Copy className="h-4 w-4" />
                     </button>
                 </div>
 
-                <div className="bg-slate-900/50 rounded-lg p-3 flex items-center justify-between group/field hover:bg-slate-900 transition-colors">
-                    <div className="flex-1 min-w-0 mr-2">
-                        <p className="text-xs text-slate-500 uppercase font-semibold mb-0.5">Contraseña</p>
-                        <p className="text-slate-300 text-sm truncate font-mono">
+                <div className="group/field flex items-center justify-between rounded-lg bg-slate-900/50 p-3 transition-colors hover:bg-slate-900">
+                    <div className="mr-2 min-w-0 flex-1">
+                        <p className="mb-0.5 text-xs font-semibold uppercase text-slate-500">Contrasena</p>
+                        <p className="truncate font-mono text-sm text-slate-300">
                             {showPassword ? item.password : '••••••••••••'}
                         </p>
                     </div>
-                    <div className="flex items-center gap-2 opacity-0 group-hover/field:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover/field:opacity-100">
                         <button
-                            onClick={() => setShowPassword(!showPassword)}
+                            onClick={stop(() => setShowPassword((previous) => !previous))}
                             className="text-slate-500 hover:text-white"
-                            title={showPassword ? "Ocultar" : "Mostrar"}
+                            title={showPassword ? 'Ocultar' : 'Mostrar'}
                         >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                         <button
-                            onClick={() => copyToClipboard(item.password, 'Contraseña')}
+                            onClick={stop(() => copyToClipboard(item.password, 'Contrasena'))}
                             className="text-slate-500 hover:text-white"
-                            title="Copiar contraseña"
+                            title="Copiar contrasena"
                         >
-                            <Copy className="w-4 h-4" />
+                            <Copy className="h-4 w-4" />
                         </button>
                         <button
-                            onClick={copyAll}
+                            onClick={stop(copyAll)}
                             className="text-slate-500 hover:text-primary"
-                            title="Copiar usuario y contraseña"
+                            title="Copiar usuario y contrasena"
                         >
-                            <Clipboard className="w-4 h-4" />
+                            <Clipboard className="h-4 w-4" />
                         </button>
                     </div>
                 </div>
@@ -180,55 +240,39 @@ export default function PasswordCard({ item, onClick, onShare }) {
                         href={item.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-xs text-secondary hover:text-secondary/80 mt-2"
+                        onClick={(event) => event.stopPropagation()}
+                        className="mt-2 flex items-center gap-2 text-xs text-secondary hover:text-secondary/80"
                     >
-                        <Globe className="w-3 h-3" />
+                        <Globe className="h-3 w-3" />
                         <span className="truncate">{item.url}</span>
                     </a>
                 )}
 
-                {/* Security Indicator */}
                 {!item.isDeleted && (() => {
                     const security = calculateCrackTime(item.password);
                     return (
-                        <div className={cn(
-                            "mt-3 p-2 rounded-lg border transition-colors",
-                            security.bgColor,
-                            security.borderColor
-                        )}>
+                        <div className={cn('mt-3 rounded-lg border p-2 transition-colors', security.bgColor, security.borderColor)}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <Shield className={cn("w-3.5 h-3.5", security.color)} />
-                                    <span className={cn("text-xs font-medium", security.color)}>
+                                    <Shield className={cn('h-3.5 w-3.5', security.color)} />
+                                    <span className={cn('text-xs font-medium', security.color)}>
                                         {getSecurityEmoji(security.level)} Tiempo de hackeo
                                     </span>
                                 </div>
-                                <span className={cn("text-xs font-bold", security.color)}>
-                                    {security.time}
-                                </span>
+                                <span className={cn('text-xs font-bold', security.color)}>{security.time}</span>
                             </div>
                         </div>
                     );
                 })()}
 
-                {/* Breach Alert */}
                 {!item.isDeleted && item.breachCount > 0 && (
-                    <div className="mt-3 p-3 rounded-lg border-2 border-red-500/50 bg-red-500/10 animate-pulse">
+                    <div className="mt-3 rounded-lg border-2 border-red-500/50 bg-red-500/10 p-3 animate-pulse">
                         <div className="flex items-start gap-2">
-                            <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
                             <div className="flex-1">
-                                <div className="text-red-500 font-bold text-sm mb-1">
-                                    ⚠️ Contraseña Comprometida
-                                </div>
+                                <div className="mb-1 text-sm font-bold text-red-500">Contrasena comprometida</div>
                                 <p className="text-xs text-red-400">
-                                    Esta contraseña ha aparecido en <strong>{item.breachCount.toLocaleString()}</strong> filtraciones de datos.
-                                    {' '}
-                                    <button
-                                        className="underline hover:text-red-300"
-                                        onClick={() => alert('Se recomienda cambiar esta contraseña inmediatamente por una única y segura.')}
-                                    >
-                                        ¿Qué hacer?
-                                    </button>
+                                    Esta contrasena ha aparecido en <strong>{item.breachCount.toLocaleString()}</strong> filtraciones.
                                 </p>
                             </div>
                         </div>
@@ -236,21 +280,16 @@ export default function PasswordCard({ item, onClick, onShare }) {
                 )}
             </div>
 
-            {/* Password History Modal */}
             <PasswordHistoryModal
                 isOpen={isHistoryOpen}
                 onClose={() => setIsHistoryOpen(false)}
                 passwordItem={item}
             />
-
-            {/* Share Password Modal */}
             <SharePasswordModal
                 isOpen={isShareOpen}
                 onClose={() => setIsShareOpen(false)}
                 passwordItem={item}
             />
-
-            {/* Edit Password Modal */}
             <EditPasswordModal
                 isOpen={isEditOpen}
                 onClose={() => setIsEditOpen(false)}

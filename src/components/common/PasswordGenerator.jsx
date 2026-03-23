@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { RefreshCw, Copy, Check, Settings } from 'lucide-react';
+import { useState } from 'react';
+import { RefreshCw, Check, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function PasswordGenerator({ onGenerate }) {

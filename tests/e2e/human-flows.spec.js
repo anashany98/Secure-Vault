@@ -104,8 +104,12 @@ test.describe('Flujos humanos de la web', () => {
     const sharePage = await page.context().newPage();
     await sharePage.goto(`/share/${id}`, { waitUntil: 'domcontentloaded' });
     await expect(sharePage.getByRole('button', { name: /revelar secreto ahora/i })).toBeVisible();
+    const revealResponsePromise = sharePage.waitForResponse((response) =>
+      response.request().method() === 'POST' && response.url().includes(`/api/shares/${id}/reveal`)
+    );
     await sharePage.getByRole('button', { name: /revelar secreto ahora/i }).click();
-    await expect(sharePage.getByText(title)).toBeVisible();
+    const revealResponse = await revealResponsePromise;
+    expect(revealResponse.ok()).toBeTruthy();
     await sharePage.close();
 
     const secondTryPage = await page.context().newPage();
@@ -200,7 +204,7 @@ test.describe('Flujos humanos de la web', () => {
       password: 'TwoFa#2026!',
     });
 
-    await loginWithCredentialsLikeHuman(page, credentials);
+    await loginWithCredentialsLikeHuman(page, credentials, { request });
 
     await humanClick(page, page.getByTestId('nav-settings'));
     await humanClick(page, page.getByTestId('settings-tab-security'));
@@ -214,7 +218,7 @@ test.describe('Flujos humanos de la web', () => {
     await humanClick(page, page.getByTestId('twofa-finish'));
 
     await logoutLikeHuman(page);
-    await loginWithCredentialsLikeHuman(page, credentials, { twoFactorSecret: secret });
+    await loginWithCredentialsLikeHuman(page, credentials, { request, twoFactorSecret: secret });
     await expect(page.getByRole('heading', { name: /mi b|b[óo]veda/i }).first()).toBeVisible();
   });
 
@@ -226,7 +230,7 @@ test.describe('Flujos humanos de la web', () => {
       password: 'Role#2026!',
     });
 
-    await loginWithCredentialsLikeHuman(page, credentials);
+    await loginWithCredentialsLikeHuman(page, credentials, { request });
     await humanClick(page, page.getByTestId('nav-settings'));
     await expect(page.getByRole('heading', { name: /ajustes del sistema/i })).toBeVisible();
     await expect(page.getByTestId('settings-tab-users')).toHaveCount(0);

@@ -7,9 +7,9 @@
 // Rate limit: 1 request every 1.5 seconds for free tier
 const RATE_LIMIT_MS = 1500;
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
-const CACHE_KEY = 'hibp_breach_cache';
 
 let lastRequestTime = 0;
+const breachCache = new Map();
 
 /**
  * SHA-1 hash function (browser-native)
@@ -25,43 +25,43 @@ async function sha1(str) {
  * Get cached breach result
  */
 function getCache(hash) {
-    try {
-        const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-        const entry = cache[hash];
+    const entry = breachCache.get(hash);
 
-        if (entry && (Date.now() - entry.timestamp) < CACHE_DURATION_MS) {
-            return entry.count;
-        }
-        return null;
-    } catch (e) {
+    if (entry && (Date.now() - entry.timestamp) < CACHE_DURATION_MS) {
+        return entry.count;
+    }
+
+    if (entry) {
+        breachCache.delete(hash);
+    }
+
+    return null;
+}
+
+function trimCache() {
+    if (breachCache.size <= 1000) {
         return null;
     }
+
+    const newestEntries = [...breachCache.entries()]
+        .sort((a, b) => b[1].timestamp - a[1].timestamp)
+        .slice(0, 500);
+
+    breachCache.clear();
+    newestEntries.forEach(([key, value]) => {
+        breachCache.set(key, value);
+    });
 }
 
 /**
  * Save breach result to cache
  */
 function setCache(hash, count) {
-    try {
-        const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-        cache[hash] = {
-            count,
-            timestamp: Date.now()
-        };
-
-        // Limit cache size to 1000 entries (prevent bloat)
-        const entries = Object.entries(cache);
-        if (entries.length > 1000) {
-            // Keep only newest 500
-            const sorted = entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-            const trimmed = Object.fromEntries(sorted.slice(0, 500));
-            localStorage.setItem(CACHE_KEY, JSON.stringify(trimmed));
-        } else {
-            localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-        }
-    } catch (e) {
-        console.error('Failed to cache breach result:', e);
-    }
+    breachCache.set(hash, {
+        count,
+        timestamp: Date.now()
+    });
+    trimCache();
 }
 
 /**
@@ -187,27 +187,22 @@ export async function checkMultiplePasswords(passwords, onProgress = null) {
  * Clear breach cache
  */
 export function clearBreachCache() {
-    localStorage.removeItem(CACHE_KEY);
+    breachCache.clear();
 }
 
 /**
  * Get cache statistics
  */
 export function getCacheStats() {
-    try {
-        const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-        const entries = Object.values(cache);
+    const entries = [...breachCache.values()];
 
-        return {
-            totalEntries: entries.length,
-            oldestEntry: entries.length > 0
-                ? new Date(Math.min(...entries.map(e => e.timestamp)))
-                : null,
-            newestEntry: entries.length > 0
-                ? new Date(Math.max(...entries.map(e => e.timestamp)))
-                : null
-        };
-    } catch (e) {
-        return { totalEntries: 0, oldestEntry: null, newestEntry: null };
-    }
+    return {
+        totalEntries: entries.length,
+        oldestEntry: entries.length > 0
+            ? new Date(Math.min(...entries.map((entry) => entry.timestamp)))
+            : null,
+        newestEntry: entries.length > 0
+            ? new Date(Math.max(...entries.map((entry) => entry.timestamp)))
+            : null
+    };
 }

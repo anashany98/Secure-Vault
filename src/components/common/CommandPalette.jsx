@@ -1,215 +1,284 @@
-import { X, Search, Copy, Eye, Trash2, Star, ArrowRight, Zap } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
-import { usePasswords } from '../../context/PasswordContext';
-import { useView } from '../../context/ViewContext';
-import { useAuth } from '../../context/AuthContext';
+import { ArrowRight, Copy, FileText, Package, Search, Share2, Star, Trash2, Zap } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import toast from 'react-hot-toast';
 
+import { useInventory } from '../../context/InventoryContext';
+import { useNotes } from '../../context/NotesContext';
+import { usePasswords } from '../../context/PasswordContext';
+import { useView } from '../../context/ViewContext';
+
+function buildSearchEntries(passwords, notes, inventory, setCurrentView) {
+    const entries = [];
+
+    passwords
+        .filter((password) => !password.isDeleted)
+        .forEach((password) => {
+            entries.push({
+                id: `password-${password.id}`,
+                kind: 'credencial',
+                keywords: Array.isArray(password.tags) ? password.tags.map((tag) => tag.name || tag) : [],
+                subtitle: password.username || password.url || 'Sin usuario',
+                targetView: 'all',
+                title: password.title,
+                type: 'password',
+                value: password,
+            });
+        });
+
+    notes
+        .filter((note) => !note.isDeleted)
+        .forEach((note) => {
+            entries.push({
+                id: `note-${note.id}`,
+                kind: 'nota',
+                keywords: [note.content],
+                subtitle: 'Abrir en notas seguras',
+                targetView: 'notes',
+                title: note.title,
+                type: 'note',
+                value: note,
+            });
+        });
+
+    inventory.forEach((device) => {
+        entries.push({
+            id: `device-${device.id}`,
+            kind: 'activo',
+            keywords: [device.brand, device.model, device.serial, device.assignedTo],
+            subtitle: `${device.brand} ${device.model}`,
+            targetView: 'inventory',
+            title: device.serial || device.model,
+            type: 'device',
+            value: device,
+        });
+    });
+
+    return entries.map((entry) => ({
+        ...entry,
+        action: () => setCurrentView(entry.targetView),
+    }));
+}
+
 export default function CommandPalette({ isOpen, onClose }) {
-    const { passwords, toggleFavorite, deletePassword } = usePasswords();
+    const { passwords } = usePasswords();
+    const { notes } = useNotes();
+    const { items } = useInventory();
     const { setCurrentView } = useView();
-    const { logout } = useAuth();
     const [query, setQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    // Fuzzy search setup
-    const fuse = useMemo(() => {
-        const activePasswords = passwords.filter(p => !p.isDeleted);
-        return new Fuse(activePasswords, {
-            keys: ['title', 'username', 'url', 'person', 'tags'],
-            threshold: 0.4,
-            includeScore: true
-        });
-    }, [passwords]);
+    const searchEntries = useMemo(
+        () => buildSearchEntries(passwords, notes, items, setCurrentView),
+        [items, notes, passwords, setCurrentView]
+    );
 
-    // Search results
+    const fuse = useMemo(
+        () =>
+            new Fuse(searchEntries, {
+                includeScore: true,
+                keys: ['title', 'subtitle', 'kind', 'keywords'],
+                threshold: 0.35,
+            }),
+        [searchEntries]
+    );
+
     const searchResults = useMemo(() => {
         if (!query) {
-            // Show recent/favorite passwords when no query
-            return passwords
-                .filter(p => !p.isDeleted)
-                .sort((a, b) => {
-                    if (a.isFavorite && !b.isFavorite) return -1;
-                    if (!a.isFavorite && b.isFavorite) return 1;
-                    return 0;
-                })
-                .slice(0, 8);
+            return searchEntries.slice(0, 8);
         }
 
-        return fuse.search(query).slice(0, 8).map(result => result.item);
-    }, [query, fuse, passwords]);
+        return fuse.search(query).slice(0, 8).map((result) => result.item);
+    }, [fuse, query, searchEntries]);
 
-    // Actions
-    const actions = [
-        { id: 'view-all', icon: Search, label: 'Ver Todas las Contraseñas', action: () => setCurrentView('all') },
-        { id: 'view-favorites', icon: Star, label: 'Ver Favoritos', action: () => setCurrentView('favorites') },
-        { id: 'view-shared', icon: Copy, label: 'Ver Compartidas Conmigo', action: () => setCurrentView('shared') },
-        { id: 'view-trash', icon: Trash2, label: 'Ver Papelera', action: () => setCurrentView('trash') },
-    ];
+    const actions = useMemo(
+        () => [
+            { id: 'view-inbox', icon: Search, label: 'Abrir Pendientes', action: () => setCurrentView('inbox') },
+            { id: 'view-all', icon: Copy, label: 'Ver Todas las Contrasenas', action: () => setCurrentView('all') },
+            { id: 'view-favorites', icon: Star, label: 'Ver Favoritos', action: () => setCurrentView('favorites') },
+            { id: 'view-shared', icon: Share2, label: 'Ver Compartidas Conmigo', action: () => setCurrentView('shared') },
+            { id: 'view-trash', icon: Trash2, label: 'Ver Papelera', action: () => setCurrentView('trash') },
+            { id: 'view-notes', icon: FileText, label: 'Abrir Notas Seguras', action: () => setCurrentView('notes') },
+            { id: 'view-inventory', icon: Package, label: 'Abrir Inventario', action: () => setCurrentView('inventory') },
+        ],
+        [setCurrentView]
+    );
 
-    // Reset on open/close
+    const handleSelect = useCallback((index) => {
+        if (index < searchResults.length) {
+            const entry = searchResults[index];
+            if (entry.type === 'password') {
+                navigator.clipboard.writeText(entry.value.password);
+                toast.success(`Contrasena de ${entry.title} copiada`);
+            } else {
+                entry.action();
+                toast.success(`Abriendo ${entry.kind}`);
+            }
+            onClose();
+            return;
+        }
+
+        const action = actions[index - searchResults.length];
+        if (action) {
+            action.action();
+            onClose();
+        }
+    }, [actions, onClose, searchResults]);
+
     useEffect(() => {
-        if (isOpen) {
-            setQuery('');
-            setSelectedIndex(0);
+        if (!isOpen) {
+            return;
         }
+
+        setQuery('');
+        setSelectedIndex(0);
     }, [isOpen]);
 
-    // Keyboard navigation
     useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (!isOpen) return;
+        const handleKeyDown = (event) => {
+            if (!isOpen) {
+                return;
+            }
 
             const totalItems = searchResults.length + (query ? 0 : actions.length);
+            if (totalItems === 0) {
+                return;
+            }
 
-            switch (e.key) {
+            switch (event.key) {
                 case 'ArrowDown':
-                    e.preventDefault();
-                    setSelectedIndex(prev => (prev + 1) % totalItems);
+                    event.preventDefault();
+                    setSelectedIndex((previous) => (previous + 1) % totalItems);
                     break;
                 case 'ArrowUp':
-                    e.preventDefault();
-                    setSelectedIndex(prev => (prev - 1 + totalItems) % totalItems);
+                    event.preventDefault();
+                    setSelectedIndex((previous) => (previous - 1 + totalItems) % totalItems);
                     break;
                 case 'Enter':
-                    e.preventDefault();
+                    event.preventDefault();
                     handleSelect(selectedIndex);
                     break;
                 case 'Escape':
-                    e.preventDefault();
+                    event.preventDefault();
                     onClose();
+                    break;
+                default:
                     break;
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, selectedIndex, searchResults, query]);
+    }, [actions, handleSelect, isOpen, onClose, query, searchResults, selectedIndex]);
 
-    const handleSelect = (index) => {
-        if (query) {
-            // Password selected
-            if (searchResults[index]) {
-                const password = searchResults[index];
-                navigator.clipboard.writeText(password.password);
-                toast.success(`✅ Contraseña de ${password.title} copiada`);
-                onClose();
-            }
-        } else {
-            // Action or password selected
-            if (index < searchResults.length) {
-                const password = searchResults[index];
-                navigator.clipboard.writeText(password.password);
-                toast.success(`✅ Contraseña de ${password.title} copiada`);
-                onClose();
-            } else {
-                const actionIndex = index - searchResults.length;
-                if (actions[actionIndex]) {
-                    actions[actionIndex].action();
-                    onClose();
-                }
-            }
-        }
-    };
-
-    if (!isOpen) return null;
+    if (!isOpen) {
+        return null;
+    }
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-[10vh] bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-            <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-top-2 duration-150">
-                {/* Search Input */}
-                <div className="flex items-center gap-3 p-4 border-b border-slate-700">
-                    <Search className="w-5 h-5 text-slate-500" />
+        <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/60 p-4 pt-[10vh] backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl animate-in zoom-in-95 slide-in-from-top-2 duration-150">
+                <div className="flex items-center gap-3 border-b border-slate-700 p-4">
+                    <Search className="h-5 w-5 text-slate-500" />
                     <input
-                        type="text"
-                        placeholder="Buscar contraseñas o acciones (Ej: Google, Facebook...)"
-                        value={query}
-                        onChange={(e) => {
-                            setQuery(e.target.value);
+                        autoFocus
+                        className="flex-1 border-none bg-transparent text-lg text-white outline-none placeholder-slate-500"
+                        onChange={(event) => {
+                            setQuery(event.target.value);
                             setSelectedIndex(0);
                         }}
-                        autoFocus
-                        className="flex-1 bg-transparent border-none outline-none text-white placeholder-slate-500 text-lg"
+                        placeholder="Buscar contraseñas, notas e inventario..."
+                        type="text"
+                        value={query}
                     />
-                    <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs font-mono text-slate-500 bg-slate-800 border border-slate-700 rounded">
+                    <kbd className="hidden items-center gap-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-slate-500 sm:inline-flex">
                         ESC
                     </kbd>
                 </div>
 
-                {/* Results */}
                 <div className="max-h-[60vh] overflow-y-auto">
-                    {/* Password Results */}
                     {searchResults.length > 0 && (
                         <div className="p-2">
-                            <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase">
-                                {query ? 'Resultados' : 'Recientes y Favoritos'}
+                            <div className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">
+                                {query ? 'Resultados' : 'Acceso Rapido'}
                             </div>
-                            {searchResults.map((password, index) => (
+                            {searchResults.map((entry, index) => (
                                 <button
-                                    key={password.id}
+                                    key={entry.id}
+                                    className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${
+                                        selectedIndex === index
+                                            ? 'bg-primary/20 text-white'
+                                            : 'text-slate-300 hover:bg-slate-800'
+                                    }`}
                                     onClick={() => handleSelect(index)}
-                                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors text-left ${selectedIndex === index
-                                        ? 'bg-primary/20 text-white'
-                                        : 'text-slate-300 hover:bg-slate-800'
-                                        }`}
                                 >
-                                    <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-lg font-bold text-white">
-                                        {password.title.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <div className="font-medium truncate">{password.title}</div>
-                                            {password.isFavorite && (
-                                                <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 flex-shrink-0" />
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white">
+                                            {entry.title.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <div className="truncate font-medium">{entry.title}</div>
+                                                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] uppercase text-slate-500">
+                                                    {entry.kind}
+                                                </span>
+                                            </div>
+                                            <div className="truncate text-sm text-slate-500">{entry.subtitle}</div>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                                            {entry.type === 'password' ? (
+                                                <>
+                                                    <Copy className="h-4 w-4" />
+                                                    <span className="hidden sm:inline">Copiar</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <ArrowRight className="h-4 w-4" />
+                                                    <span className="hidden sm:inline">Abrir</span>
+                                                </>
                                             )}
                                         </div>
-                                        <div className="text-sm text-slate-500 truncate">{password.username}</div>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                                        <Copy className="w-4 h-4" />
-                                        <span className="hidden sm:inline">Copiar</span>
                                     </div>
                                 </button>
                             ))}
                         </div>
                     )}
 
-                    {/* Actions (only show when no query) */}
                     {!query && actions.length > 0 && (
-                        <div className="p-2 border-t border-slate-700">
-                            <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase">
-                                Acciones Rápidas
+                        <div className="border-t border-slate-700 p-2">
+                            <div className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">
+                                Acciones Rapidas
                             </div>
                             {actions.map((action, index) => {
-                                const actualIndex = searchResults.length + index;
-                                const Icon = action.icon;
+                                const ActionIcon = action.icon;
+                                const actionIndex = searchResults.length + index;
+
                                 return (
                                     <button
                                         key={action.id}
-                                        onClick={() => handleSelect(actualIndex)}
-                                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors text-left ${selectedIndex === actualIndex
-                                            ? 'bg-primary/20 text-white'
-                                            : 'text-slate-300 hover:bg-slate-800'
-                                            }`}
+                                        className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${
+                                            selectedIndex === actionIndex
+                                                ? 'bg-primary/20 text-white'
+                                                : 'text-slate-300 hover:bg-slate-800'
+                                        }`}
+                                        onClick={() => handleSelect(actionIndex)}
                                     >
-                                        <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center">
-                                            <Icon className="w-5 h-5 text-primary" />
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800">
+                                                <ActionIcon className="h-5 w-5 text-primary" />
+                                            </div>
+                                            <div className="flex-1 font-medium">{action.label}</div>
+                                            <ArrowRight className="h-4 w-4 text-slate-500" />
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="font-medium">{action.label}</div>
-                                        </div>
-                                        <ArrowRight className="w-4 h-4 text-slate-500" />
                                     </button>
                                 );
                             })}
                         </div>
                     )}
 
-                    {/* No results */}
                     {query && searchResults.length === 0 && (
                         <div className="p-12 text-center">
-                            <Search className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+                            <Search className="mx-auto mb-4 h-12 w-12 text-slate-600" />
                             <p className="text-slate-400">
                                 No se encontraron resultados para "<strong>{query}</strong>"
                             </p>
@@ -217,20 +286,19 @@ export default function CommandPalette({ isOpen, onClose }) {
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="p-3 border-t border-slate-700 bg-slate-900/50 flex items-center justify-between text-xs text-slate-500">
+                <div className="flex items-center justify-between border-t border-slate-700 bg-slate-900/50 p-3 text-xs text-slate-500">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-1">
-                            <kbd className="px-2 py-1 bg-slate-800 border border-slate-700 rounded">↑↓</kbd>
+                            <kbd className="rounded border border-slate-700 bg-slate-800 px-2 py-1">↑↓</kbd>
                             <span>Navegar</span>
                         </div>
                         <div className="flex items-center gap-1">
-                            <kbd className="px-2 py-1 bg-slate-800 border border-slate-700 rounded">↵</kbd>
+                            <kbd className="rounded border border-slate-700 bg-slate-800 px-2 py-1">↵</kbd>
                             <span>Seleccionar</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-1 text-primary">
-                        <Zap className="w-3 h-3" />
+                        <Zap className="h-3 w-3" />
                         <span>Command Palette</span>
                     </div>
                 </div>

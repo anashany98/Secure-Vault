@@ -11,10 +11,15 @@ const pool = new Pool({
 async function seedAdmin() {
     try {
         const client = await pool.connect();
+        const email = process.env.BOOTSTRAP_ADMIN_EMAIL || process.env.ADMIN_EMAIL;
+        const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+
+        if (!email || !password) {
+            throw new Error('BOOTSTRAP_ADMIN_EMAIL/ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are required');
+        }
 
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash('admin123', salt);
-        const email = 'admin@securevault.com';
+        const hashedPassword = await bcrypt.hash(password, salt);
 
         // Check if exists
         const check = await client.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -31,8 +36,8 @@ async function seedAdmin() {
         }
 
         console.log('Admin seeded successfully:');
-        console.log('Email: admin@securevault.com');
-        console.log('Password: admin123');
+        console.log(`Email: ${email}`);
+        console.log('Password: [provided via environment]');
 
         client.release();
     } catch (err) {

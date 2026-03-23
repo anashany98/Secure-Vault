@@ -1,11 +1,13 @@
 import { expect } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 
-const CANDIDATE_CREDENTIALS = [
-  { email: 'admin@securevault.com', password: 'admin123' },
-  { email: 'admin@company.com', password: 'admin123' },
-];
+const ADMIN_CREDENTIALS = {
+  email: 'admin@securevault.local',
+  masterPassword: 'SecureVaultMaster#2026',
+  password: 'SecureVaultAdmin#2026',
+};
 
+const NEW_USER_MASTER_PASSWORD = 'E2eVaultMaster#2026';
 const NEW_USER_PASSWORD = 'E2eHuman#123';
 
 export async function humanPause(page, min = 120, max = 320) {
@@ -35,32 +37,83 @@ export async function humanClick(page, locator) {
   await humanPause(page, 140, 300);
 }
 
+async function loginAsAdmin(request) {
+  const response = await request.post('/api/auth/login', {
+    data: ADMIN_CREDENTIALS,
+  });
+
+  expect(response.ok()).toBeTruthy();
+  const data = await response.json();
+  expect(data.requires2FA).not.toBeTruthy();
+  expect(data.requires2FASetup).not.toBeTruthy();
+}
+
+async function registerUserAsAdmin(request, user) {
+  await loginAsAdmin(request);
+  const response = await request.post('/api/auth/register', {
+    data: user,
+  });
+
+  if (response.status() !== 400) {
+    expect(response.ok()).toBeTruthy();
+  }
+
+  return user;
+}
+
 async function createFallbackUser(request) {
   const unique = Date.now();
   const fallback = {
     name: `E2E Human ${unique}`,
     email: `e2e.human.${unique}@example.com`,
+    masterPassword: NEW_USER_MASTER_PASSWORD,
     password: NEW_USER_PASSWORD,
   };
 
-  const registerResponse = await request.post('/api/auth/register', {
-    data: fallback,
-  });
-
-  expect(registerResponse.ok()).toBeTruthy();
+  await registerUserAsAdmin(request, fallback);
   return { email: fallback.email, password: fallback.password };
 }
 
+async function provisionTeamVaultAccessAsAdmin(page, request, targetEmail) {
+  const waitingLogout = page.getByTestId('vault-access-logout').first();
+  if (await waitingLogout.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await waitingLogout.click();
+    await page.waitForLoadState('domcontentloaded');
+  }
+
+  await loginWithCredentialsLikeHuman(page, ADMIN_CREDENTIALS, {
+    request,
+    skipAutoTeamProvision: true,
+  });
+
+  await humanClick(page, page.getByTestId('nav-settings'));
+  await expect(page.getByRole('heading', { name: /ajustes del sistema/i }).first()).toBeVisible();
+  await humanClick(page, page.getByTestId('settings-tab-users'));
+
+  const targetRow = page.locator('[data-testid^="users-row-"]').filter({ hasText: targetEmail }).first();
+  await expect(targetRow).toBeVisible();
+  await humanClick(
+    page,
+    targetRow.locator('[data-testid^="users-provision-vault-"]').first()
+  );
+
+  const invitationCode = (await page.getByTestId('users-vault-invitation-code').textContent())?.trim();
+  if (!invitationCode) {
+    throw new Error(`Could not generate a team vault invitation for ${targetEmail}`);
+  }
+
+  await logoutLikeHuman(page);
+  return invitationCode;
+}
+
 export async function resolveCredentials(request) {
-  for (const credentials of CANDIDATE_CREDENTIALS) {
-    const response = await request.post('/api/auth/login', {
-      data: credentials,
-    });
+  const response = await request.post('/api/auth/login', {
+    data: ADMIN_CREDENTIALS,
+  });
 
-    if (!response.ok()) continue;
-
+  if (response.ok()) {
     const data = await response.json();
-    if (!data.requires2FA) return credentials;
+    if (!data.requires2FA && !data.requires2FASetup) return ADMIN_CREDENTIALS;
   }
 
   return createFallbackUser(request);
@@ -68,11 +121,12 @@ export async function resolveCredentials(request) {
 
 export async function loginLikeHuman(page, request) {
   const credentials = await resolveCredentials(request);
-  return loginWithCredentialsLikeHuman(page, credentials);
+  return loginWithCredentialsLikeHuman(page, credentials, { request });
 }
 
 export async function loginWithCredentialsLikeHuman(page, credentials, options = {}) {
-  const { twoFactorSecret } = options;
+  const { request, skipAutoTeamProvision = false, teamInvitationSecret, twoFactorSecret } = options;
+  const masterPassword = credentials.masterPassword || NEW_USER_MASTER_PASSWORD;
 
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('login-submit')).toBeVisible();
@@ -115,23 +169,67 @@ export async function loginWithCredentialsLikeHuman(page, credentials, options =
     }
   }
 
+  const awaitingTeamAccess = await page
+    .getByRole('heading', { name: /esperando acceso a la b[óo]veda/i })
+    .isVisible({ timeout: 2_000 })
+    .catch(() => false);
+
+  if (awaitingTeamAccess && request && !skipAutoTeamProvision) {
+    const generatedInvitationSecret = await provisionTeamVaultAccessAsAdmin(page, request, credentials.email);
+    return loginWithCredentialsLikeHuman(page, credentials, {
+      request,
+      skipAutoTeamProvision: true,
+      teamInvitationSecret: generatedInvitationSecret,
+      twoFactorSecret,
+    });
+  }
+
+  const requiresTeamInvitation = await page
+    .getByTestId('vault-invitation-secret')
+    .isVisible({ timeout: 2_000 })
+    .catch(() => false);
+
+  if (requiresTeamInvitation) {
+    if (!teamInvitationSecret) {
+      throw new Error('Team vault invitation is required but no invitation secret was provided');
+    }
+
+    await humanType(page, page.getByTestId('vault-invitation-secret'), teamInvitationSecret);
+    await humanType(page, page.getByTestId('vault-master-password'), masterPassword);
+    await humanType(page, page.getByTestId('vault-master-password-confirm'), masterPassword);
+    await humanClick(page, page.getByTestId('vault-master-submit'));
+  } else {
+    const requiresVaultSetup = await page
+      .getByTestId('vault-master-submit')
+      .isVisible({ timeout: 2_000 })
+      .catch(() => false);
+
+    if (requiresVaultSetup) {
+      await humanType(page, page.getByTestId('vault-master-password'), masterPassword);
+      await humanType(page, page.getByTestId('vault-master-password-confirm'), masterPassword);
+      await humanClick(page, page.getByTestId('vault-master-submit'));
+    } else {
+      const requiresVaultUnlock = await page
+        .getByTestId('vault-unlock-submit')
+        .isVisible({ timeout: 2_000 })
+        .catch(() => false);
+
+      if (requiresVaultUnlock) {
+        await humanType(page, page.getByTestId('vault-unlock-password'), masterPassword);
+        await humanClick(page, page.getByTestId('vault-unlock-submit'));
+      }
+    }
+  }
+
   await page.waitForLoadState('networkidle');
   await expect(page).not.toHaveURL(/\/login$/);
-  await expect(page.getByText(/bienvenido/i).first()).toBeVisible();
 
   return credentials;
 }
 
 export async function ensureUser(request, { name, email, password }) {
-  const response = await request.post('/api/auth/register', {
-    data: { name, email, password },
-  });
-
-  if (response.status() !== 400) {
-    expect(response.ok()).toBeTruthy();
-  }
-
-  return { name, email, password };
+  await registerUserAsAdmin(request, { name, email, password });
+  return { name, email, masterPassword: NEW_USER_MASTER_PASSWORD, password };
 }
 
 export async function createPasswordLikeHuman(page, passwordData) {

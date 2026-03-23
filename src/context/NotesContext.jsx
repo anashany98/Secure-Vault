@@ -1,162 +1,186 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import CryptoJS from 'crypto-js';
-import { useAuth } from './AuthContext';
-import { api } from '../lib/api';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+
+import { useAuth } from './AuthContext';
+import { useVaultSecurity } from './VaultSecurityContext';
+import { api } from '../lib/api';
+import { getNotesKey } from '../lib/env';
+import { decryptStringWithKey, encryptStringWithKey } from '../lib/secretCrypto';
+import { normalizeNote } from '../lib/modelAdapters';
 
 const NotesContext = createContext();
 
-export const useNotes = () => useContext(NotesContext);
+export function useNotes() {
+    const context = useContext(NotesContext);
+    if (!context) {
+        throw new Error('useNotes must be used within a NotesProvider');
+    }
 
-const ENCRYPTION_KEY = import.meta.env.VITE_NOTES_KEY || 'demo-secret-key-change-this-in-prod';
+    return context;
+}
 
-export const NotesProvider = ({ children }) => {
+function encryptContent(content) {
+    return encryptStringWithKey(content, getNotesKey());
+}
+
+function decryptContent(content) {
+    return decryptStringWithKey(content, getNotesKey());
+}
+
+function hydrateNote(note) {
+    const normalized = normalizeNote(note);
+    return {
+        ...normalized,
+        content: decryptContent(normalized.content),
+    };
+}
+
+export function NotesProvider({ children }) {
     const { user } = useAuth();
+    const { isVaultReady } = useVaultSecurity();
     const [notes, setNotes] = useState([]);
 
+    const refreshNotes = useCallback(async () => {
+        if (!user || !isVaultReady) {
+            setNotes([]);
+            return [];
+        }
+
+        const items = await api.get('/notes');
+        const nextNotes = (Array.isArray(items) ? items : []).map(hydrateNote);
+        setNotes(nextNotes);
+        return nextNotes;
+    }, [isVaultReady, user]);
+
     useEffect(() => {
-        if (!user) {
+        if (!user || !isVaultReady) {
             setNotes([]);
             return;
         }
 
-        const fetchNotes = async () => {
-            try {
-                const items = await api.get('/notes');
-                const decrypted = items.map(item => {
-                    try {
-                        const bytes = CryptoJS.AES.decrypt(item.content, ENCRYPTION_KEY);
-                        const content = bytes.toString(CryptoJS.enc.Utf8);
-                        return { ...item, content };
-                    } catch (e) {
-                        return { ...item, content: 'Error decrypting' };
-                    }
-                });
-                setNotes(decrypted);
-            } catch (err) {
-                console.warn("API Notes failed, falling back to LocalStorage", err);
-                const localData = localStorage.getItem(`notes_${user.email}`);
-                if (localData) {
-                    setNotes(JSON.parse(localData));
-                } else {
-                    setNotes([]);
-                }
-            }
-        };
-
-        fetchNotes();
-    }, [user]);
-
-    const saveToLocal = (newNotes) => {
-        if (user?.email) {
-            localStorage.setItem(`notes_${user.email}`, JSON.stringify(newNotes));
-        }
-    };
+        refreshNotes().catch((error) => {
+            console.error('Error loading notes', error);
+            toast.error(error.message || 'No se pudieron cargar las notas');
+        });
+    }, [isVaultReady, refreshNotes, user]);
 
     const addNote = async (newNote) => {
-        const tempId = Date.now().toString();
-        const noteWithId = { ...newNote, id: tempId, isDeleted: false, createdAt: new Date().toISOString() };
-
         try {
-            const encryptedContent = CryptoJS.AES.encrypt(newNote.content, ENCRYPTION_KEY).toString();
-            const payload = {
+            const savedNote = await api.post('/notes', {
+                content: encryptContent(newNote.content),
+                is_favorite: Boolean(newNote.isFavorite),
                 title: newNote.title,
-                content: encryptedContent,
-                is_favorite: newNote.isFavorite || false
-            };
-
-            const savedNote = await api.post('/notes', payload);
-            setNotes(prev => [{ ...savedNote, content: newNote.content }, ...prev]);
-            toast.success('Nota creada');
-        } catch (err) {
-            console.warn("API Add Note failed, saving locally");
-            setNotes(prev => {
-                const newState = [noteWithId, ...prev];
-                saveToLocal(newState);
-                return newState;
             });
-            toast.success('Nota creada (Offline)');
+            setNotes((previous) => [hydrateNote(savedNote), ...previous]);
+            toast.success('Nota creada');
+            return { success: true };
+        } catch (error) {
+            console.error('Error adding note', error);
+            toast.error(error.message || 'No se pudo crear la nota');
+            return { success: false, error: error.message };
         }
     };
 
     const updateNote = async (id, updates) => {
-        try {
-            const current = notes.find(n => n.id === id);
-            if (!current) return;
-            const merged = { ...current, ...updates };
-
-            if (id.toString().length < 15) {
-                const encryptedContent = CryptoJS.AES.encrypt(merged.content, ENCRYPTION_KEY).toString();
-                const payload = {
-                    title: merged.title,
-                    content: encryptedContent,
-                    is_favorite: merged.isFavorite
-                };
-                await api.put(`/notes/${id}`, payload);
-            } else {
-                throw new Error("Offline ID");
-            }
-
-            setNotes(prev => prev.map(n => n.id === id ? { ...merged } : n));
-            toast.success('Nota actualizada');
-        } catch (err) {
-            setNotes(prev => {
-                const newState = prev.map(n => n.id === id ? { ...n, ...updates } : n);
-                saveToLocal(newState);
-                return newState;
-            });
-            toast.success('Nota actualizada (Offline)');
+        const current = notes.find((note) => note.id === id);
+        if (!current) {
+            return { success: false, error: 'Nota no encontrada' };
         }
+
+        const merged = {
+            ...current,
+            ...updates,
+            isFavorite: updates.isFavorite ?? updates.is_favorite ?? current.isFavorite,
+        };
+
+        try {
+            const updatedNote = await api.put(`/notes/${id}`, {
+                content: encryptContent(merged.content),
+                is_favorite: Boolean(merged.isFavorite),
+                title: merged.title,
+            });
+            setNotes((previous) =>
+                previous.map((note) => (note.id === id ? hydrateNote(updatedNote) : note))
+            );
+            toast.success('Nota actualizada');
+            return { success: true };
+        } catch (error) {
+            console.error('Error updating note', error);
+            toast.error(error.message || 'No se pudo actualizar la nota');
+            return { success: false, error: error.message };
+        }
+    };
+
+    const toggleFavoriteNote = async (id) => {
+        const current = notes.find((note) => note.id === id);
+        if (!current) {
+            return;
+        }
+
+        await updateNote(id, { isFavorite: !current.isFavorite });
     };
 
     const deleteNote = async (id) => {
         try {
-            if (id.toString().length < 15) {
-                await api.delete(`/notes/${id}`);
-            } else {
-                throw new Error("Offline ID");
-            }
-            setNotes(prev => prev.map(n => n.id === id ? { ...n, isDeleted: true, deletedAt: new Date().toISOString() } : n));
+            await api.delete(`/notes/${id}`);
+            setNotes((previous) =>
+                previous.map((note) =>
+                    note.id === id
+                        ? {
+                            ...note,
+                            deletedAt: new Date().toISOString(),
+                            deleted_at: new Date().toISOString(),
+                            isDeleted: true,
+                            is_deleted: true,
+                        }
+                        : note
+                )
+            );
             toast.success('Nota eliminada');
-        } catch (err) {
-            setNotes(prev => {
-                const newState = prev.map(n => n.id === id ? { ...n, isDeleted: true, deletedAt: new Date().toISOString() } : n);
-                saveToLocal(newState);
-                return newState;
-            });
-            toast.success('Nota eliminada (Offline)');
+        } catch (error) {
+            console.error('Error deleting note', error);
+            toast.error(error.message || 'No se pudo eliminar la nota');
         }
     };
 
-    const restoreNote = (id) => {
-        setNotes(prev => {
-            const newState = prev.map(n => n.id === id ? { ...n, isDeleted: false, deletedAt: null } : n);
-            saveToLocal(newState);
-            return newState;
-        });
-        toast.success('Nota restaurada');
+    const restoreNote = async (id) => {
+        try {
+            const restoredNote = await api.put(`/notes/${id}/restore`);
+            setNotes((previous) =>
+                previous.map((note) => (note.id === id ? hydrateNote(restoredNote) : note))
+            );
+            toast.success('Nota restaurada');
+        } catch (error) {
+            console.error('Error restoring note', error);
+            toast.error(error.message || 'No se pudo restaurar la nota');
+        }
     };
 
-    const permanentlyDeleteNote = (id) => {
-        setNotes(prev => {
-            const newState = prev.filter(n => n.id !== id);
-            saveToLocal(newState);
-            return newState;
-        });
-        toast.success('Nota eliminada permanentemente');
+    const permanentlyDeleteNote = async (id) => {
+        try {
+            await api.delete(`/notes/${id}/permanent`);
+            setNotes((previous) => previous.filter((note) => note.id !== id));
+            toast.success('Nota eliminada definitivamente');
+        } catch (error) {
+            console.error('Error permanently deleting note', error);
+            toast.error(error.message || 'No se pudo eliminar la nota');
+        }
     };
-
 
     return (
-        <NotesContext.Provider value={{
-            notes,
-            addNote,
-            updateNote,
-            deleteNote,
-            restoreNote,
-            permanentlyDeleteNote
-        }}>
+        <NotesContext.Provider
+            value={{
+                addNote,
+                deleteNote,
+                notes,
+                permanentlyDeleteNote,
+                refreshNotes,
+                restoreNote,
+                toggleFavoriteNote,
+                updateNote,
+            }}
+        >
             {children}
         </NotesContext.Provider>
     );
-};
+}

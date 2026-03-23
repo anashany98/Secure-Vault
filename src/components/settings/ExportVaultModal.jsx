@@ -1,71 +1,65 @@
 import { useState } from 'react';
-import { X, Download, Lock, AlertTriangle, FileJson } from 'lucide-react';
+import CryptoJS from 'crypto-js';
+import { X, Download, AlertTriangle, FileJson } from 'lucide-react';
+import toast from 'react-hot-toast';
+
 import { usePasswords } from '../../context/PasswordContext';
-import { useFolders } from '../../context/FolderContext';
 import { useNotes } from '../../context/NotesContext';
 import { useGroups } from '../../context/GroupContext';
 import { useInventory } from '../../context/InventoryContext';
-import CryptoJS from 'crypto-js';
-import toast from 'react-hot-toast';
 
 export default function ExportVaultModal({ isOpen, onClose }) {
-    const { passwords } = usePasswords();
-    const { folders } = useFolders();
+    const { getExportablePasswords } = usePasswords();
     const { notes } = useNotes();
     const { groups } = useGroups();
-    const { inventory } = useInventory(); // Assuming this context exists and has inventory data
-
+    const { inventory } = useInventory();
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isExporting, setIsExporting] = useState(false);
 
     if (!isOpen) return null;
 
-    const handleExport = async (e) => {
-        e.preventDefault();
+    const handleExport = async (event) => {
+        event.preventDefault();
 
         if (password.length < 8) {
-            toast.error('La contraseña debe tener al menos 8 caracteres');
+            toast.error('La contrasena debe tener al menos 8 caracteres');
             return;
         }
 
         if (password !== confirmPassword) {
-            toast.error('Las contraseñas no coinciden');
+            toast.error('Las contrasenas no coinciden');
             return;
         }
 
         setIsExporting(true);
 
         try {
-            // 1. Gather all data
+            const passwords = await getExportablePasswords();
             const vaultData = {
                 version: '1.0',
                 exportedAt: new Date().toISOString(),
                 data: {
                     passwords,
-                    folders,
                     notes,
                     groups,
                     inventory: inventory || []
                 }
             };
 
-            // 2. Encrypt
             const jsonString = JSON.stringify(vaultData);
             const encrypted = CryptoJS.AES.encrypt(jsonString, password).toString();
-
-            // 3. Create File
             const blob = new Blob([encrypted], { type: 'text/plain' });
             const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `secure-vault-backup-${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
+            const link = document.createElement('a');
 
-            // Cleanup
+            link.href = url;
+            link.download = `secure-vault-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+
             window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            document.body.removeChild(link);
 
             toast.success('Copia de seguridad exportada correctamente');
             onClose();
@@ -100,36 +94,36 @@ export default function ExportVaultModal({ isOpen, onClose }) {
                         <div>
                             <h4 className="text-amber-500 font-semibold text-sm mb-1">Importante</h4>
                             <p className="text-slate-400 text-sm">
-                                Este archivo contendrá TODA tu información. Se encriptará con la contraseña que elijas abajo.
+                                Este archivo contendra toda tu informacion. Se encriptara con la contrasena que elijas abajo.
                                 <br />
-                                <strong className="text-amber-400">Si olvidas esta contraseña, no podrás recuperar los datos.</strong>
+                                <strong className="text-amber-400">Si olvidas esta contrasena, no podras recuperar los datos.</strong>
                             </p>
                         </div>
                     </div>
 
                     <form onSubmit={handleExport} className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">Contraseña de encriptación</label>
+                            <label className="block text-sm font-medium text-slate-300 mb-1">Contrasena de encriptacion</label>
                             <input
                                 data-testid="export-password"
                                 required
                                 type="password"
-                                placeholder="••••••••"
+                                placeholder="........"
                                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                                 value={password}
-                                onChange={e => setPassword(e.target.value)}
+                                onChange={(event) => setPassword(event.target.value)}
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">Confirmar contraseña</label>
+                            <label className="block text-sm font-medium text-slate-300 mb-1">Confirmar contrasena</label>
                             <input
                                 data-testid="export-password-confirm"
                                 required
                                 type="password"
-                                placeholder="••••••••"
+                                placeholder="........"
                                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                                 value={confirmPassword}
-                                onChange={e => setConfirmPassword(e.target.value)}
+                                onChange={(event) => setConfirmPassword(event.target.value)}
                             />
                         </div>
 

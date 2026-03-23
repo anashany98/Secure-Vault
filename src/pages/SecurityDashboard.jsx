@@ -7,7 +7,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recha
 import toast from 'react-hot-toast';
 
 export default function SecurityDashboard() {
-    const { passwords, auditLogs } = usePasswords();
+    const { passwords, auditLogs, checkAllPasswordsForBreaches } = usePasswords();
 
     // Security Analysis
     const analysis = useMemo(() => {
@@ -101,9 +101,7 @@ export default function SecurityDashboard() {
                 <button
                     onClick={() => {
                         const loadingToast = toast.loading('Analizando filtraciones... puede tardar unos segundos');
-                        checkAllPasswordsForBreaches((progress) => {
-                            // Optional: Could update toast with progress
-                        }).then(() => toast.dismiss(loadingToast));
+                        checkAllPasswordsForBreaches(() => {}).then(() => toast.dismiss(loadingToast));
                     }}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-medium shadow-lg shadow-red-500/20 transition-all hover:scale-105 active:scale-95"
                 >

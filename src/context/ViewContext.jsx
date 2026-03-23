@@ -5,11 +5,10 @@ const ViewContext = createContext();
 export const useView = () => useContext(ViewContext);
 
 export const ViewProvider = ({ children }) => {
-    const [currentView, setCurrentView] = useState('all'); // all, favorites, trash, settings, folder
-    const [activeFolderId, setActiveFolderId] = useState(null);
+    const [currentView, setCurrentView] = useState('all');
 
     return (
-        <ViewContext.Provider value={{ currentView, setCurrentView, activeFolderId, setActiveFolderId }}>
+        <ViewContext.Provider value={{ currentView, setCurrentView }}>
             {children}
         </ViewContext.Provider>
     );

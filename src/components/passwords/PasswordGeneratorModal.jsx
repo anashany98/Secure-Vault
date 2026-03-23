@@ -1,5 +1,5 @@
 import { X, RefreshCw, Copy, Wand2 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { generatePassword, generatePassphrase, calculatePasswordStrength, getStrengthInfo } from '../../lib/passwordGenerator';
 import toast from 'react-hot-toast';
 
@@ -24,13 +24,7 @@ export default function PasswordGeneratorModal({ isOpen, onClose, onUsePassword 
     const strength = calculatePasswordStrength(generated);
     const strengthInfo = getStrengthInfo(strength);
 
-    useEffect(() => {
-        if (isOpen) {
-            handleGenerate();
-        }
-    }, [isOpen, generatorType]);
-
-    const handleGenerate = () => {
+    const handleGenerate = useCallback(() => {
         try {
             let result;
             if (generatorType === 'password') {
@@ -54,7 +48,25 @@ export default function PasswordGeneratorModal({ isOpen, onClose, onUsePassword 
         } catch (error) {
             toast.error(error.message);
         }
-    };
+    }, [
+        capitalize,
+        excludeAmbiguous,
+        generatorType,
+        includeNumber,
+        length,
+        separator,
+        useLowercase,
+        useNumbers,
+        useSymbols,
+        useUppercase,
+        wordCount,
+    ]);
+
+    useEffect(() => {
+        if (isOpen) {
+            handleGenerate();
+        }
+    }, [handleGenerate, isOpen]);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(generated);

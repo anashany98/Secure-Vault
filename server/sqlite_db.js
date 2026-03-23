@@ -58,7 +58,7 @@ function getDb() {
 // better-sqlite3 returns [] for all() and { changes: n, lastInsertRowid: n } for run()
 
 class SQLitePool {
-    constructor(config) {
+    constructor() {
         this.db = getDb();
         console.log(`SQLite Database connected at ${activeDbPath}`);
     }

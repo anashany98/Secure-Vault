@@ -12,13 +12,6 @@ export default function DeviceQRModal({ device, onClose }) {
         window.print();
     };
 
-    const qrValue = JSON.stringify({
-        id: device.id,
-        serial: device.serial_number,
-        model: device.model,
-        asset_tag: `ASSET-${device.id.slice(0, 8).toUpperCase()}`
-    });
-
     const qrUrl = `${window.location.origin}/inventory/view/${device.id}`;
 
     return (
@@ -53,7 +46,7 @@ export default function DeviceQRModal({ device, onClose }) {
                                 ID: <span className="font-bold">{device.id.slice(0, 8).toUpperCase()}</span>
                             </p>
                             <p className="text-[8px] font-semibold text-gray-500 truncate">
-                                SN: {device.serial_number || 'N/A'}
+                                SN: {device.serial || device.serial_number || 'N/A'}
                             </p>
                         </div>
                     </div>

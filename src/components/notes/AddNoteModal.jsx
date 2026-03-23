@@ -40,7 +40,7 @@ const AddNoteModal = ({ isOpen, onClose, editingNote = null }) => {
                 toast.success('Nota creada correctamente');
             }
             onClose();
-        } catch (error) {
+        } catch {
             toast.error('Error al guardar la nota');
         }
     };

@@ -1,31 +1,31 @@
-import { useEffect } from 'react';
-import { Share2, Clock, User, Shield, Lock } from 'lucide-react';
-import { usePasswords } from '../context/PasswordContext';
-import { useAuth } from '../context/AuthContext';
+import { useEffect, useMemo } from 'react';
+import { Clock, Lock, Share2, Shield, User } from 'lucide-react';
+
 import PasswordCard from '../components/passwords/PasswordCard';
+import { useAuth } from '../context/AuthContext';
+import { usePasswords } from '../context/PasswordContext';
 
 export default function SharedWithMe() {
+    const { vaultAccess } = useAuth();
     const { getSharedPasswords, updateShareAccess } = usePasswords();
-    const { user } = useAuth();
 
-    const sharedPasswords = getSharedPasswords();
+    const sharedPasswords = useMemo(() => getSharedPasswords(), [getSharedPasswords]);
 
     useEffect(() => {
-        // Mark shares as accessed
-        sharedPasswords.forEach(item => {
+        sharedPasswords.forEach((item) => {
             if (item.share) {
                 updateShareAccess(item.share.id);
             }
         });
-    }, []);
+    }, [sharedPasswords, updateShareAccess]);
 
     const getExpirationText = (expiresAt) => {
-        if (!expiresAt) return 'Sin expiración';
+        if (!expiresAt) return 'Sin expiracion';
 
         const now = Date.now();
-        const timeLeft = expiresAt - now;
+        const timeLeft = new Date(expiresAt).getTime() - now;
 
-        if (timeLeft < 0) return '⚠️ Expirado';
+        if (timeLeft < 0) return 'Expirado';
 
         const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
         const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -37,93 +37,96 @@ export default function SharedWithMe() {
 
     return (
         <>
-            {/* Header */}
             <div className="mb-8">
-                <div className="flex items-center gap-3 mb-2">
-                    <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center">
-                        <Share2 className="w-6 h-6 text-primary" />
+                <div className="mb-2 flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
+                        <Share2 className="h-6 w-6 text-primary" />
                     </div>
                     <div>
                         <h1 className="text-3xl font-bold text-white">Compartidas Conmigo</h1>
-                        <p className="text-slate-400">Contraseñas que otros han compartido contigo</p>
+                        <p className="text-slate-400">Credenciales que otros usuarios han compartido contigo</p>
                     </div>
                 </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                <div className="bg-surface border border-slate-700 rounded-xl p-5">
+            {vaultAccess?.mode === 'team' && (
+                <div className="mb-6 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5 text-sm text-amber-200">
+                    La boveda del equipo ya es compartida entre los usuarios autorizados.
+                    Esta seccion solo muestra shares clasicos del esquema anterior.
+                </div>
+            )}
+
+            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="rounded-xl border border-slate-700 bg-surface p-5">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-slate-400 text-sm mb-1">Total Compartidas</p>
+                            <p className="mb-1 text-sm text-slate-400">Total Compartidas</p>
                             <p className="text-3xl font-bold text-white">{sharedPasswords.length}</p>
                         </div>
-                        <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                            <Lock className="w-6 h-6 text-blue-400" />
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/20">
+                            <Lock className="h-6 w-6 text-blue-400" />
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-surface border border-slate-700 rounded-xl p-5">
+                <div className="rounded-xl border border-slate-700 bg-surface p-5">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-slate-400 text-sm mb-1">Con Permisos de Edición</p>
+                            <p className="mb-1 text-sm text-slate-400">Con Permisos de Edicion</p>
                             <p className="text-3xl font-bold text-white">
-                                {sharedPasswords.filter(p => p.share?.permission === 'write').length}
+                                {sharedPasswords.filter((item) => item.share?.permission === 'write').length}
                             </p>
                         </div>
-                        <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center">
-                            <Shield className="w-6 h-6 text-green-400" />
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/20">
+                            <Shield className="h-6 w-6 text-green-400" />
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-surface border border-slate-700 rounded-xl p-5">
+                <div className="rounded-xl border border-slate-700 bg-surface p-5">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-slate-400 text-sm mb-1">Próximas a Expirar</p>
+                            <p className="mb-1 text-sm text-slate-400">Proximas a Expirar</p>
                             <p className="text-3xl font-bold text-white">
-                                {sharedPasswords.filter(p => {
-                                    if (!p.share?.expiresAt) return false;
-                                    const timeLeft = p.share.expiresAt - Date.now();
-                                    return timeLeft > 0 && timeLeft < 7 * 24 * 60 * 60 * 1000; // Less than 7 days
+                                {sharedPasswords.filter((item) => {
+                                    if (!item.share?.expiresAt) return false;
+                                    const timeLeft = new Date(item.share.expiresAt).getTime() - Date.now();
+                                    return timeLeft > 0 && timeLeft < 7 * 24 * 60 * 60 * 1000;
                                 }).length}
                             </p>
                         </div>
-                        <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center">
-                            <Clock className="w-6 h-6 text-orange-400" />
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/20">
+                            <Clock className="h-6 w-6 text-orange-400" />
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Shared Passwords List */}
             {sharedPasswords.length === 0 ? (
-                <div className="bg-surface border border-slate-700 rounded-2xl p-12 text-center">
-                    <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <Share2 className="w-10 h-10 text-slate-600" />
+                <div className="rounded-2xl border border-slate-700 bg-surface p-12 text-center">
+                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-800">
+                        <Share2 className="h-10 w-10 text-slate-600" />
                     </div>
-                    <h3 className="text-xl font-semibold text-white mb-2">
-                        No hay contraseñas compartidas
+                    <h3 className="mb-2 text-xl font-semibold text-white">
+                        No hay contrasenas compartidas
                     </h3>
-                    <p className="text-slate-400 max-w-md mx-auto">
-                        Cuando alguien comparta una contraseña contigo, aparecerá aquí
+                    <p className="mx-auto max-w-md text-slate-400">
+                        Cuando alguien comparta una contrasena compatible contigo, aparecera aqui.
                     </p>
                 </div>
             ) : (
                 <div className="space-y-6">
-                    {sharedPasswords.map(item => (
+                    {sharedPasswords.map((item) => (
                         <div key={item.id} className="relative">
-                            {/* Share Info Banner */}
-                            <div className="bg-blue-900/20 border border-blue-900/50 rounded-t-xl p-3 flex items-center justify-between text-sm">
+                            <div className="flex items-center justify-between rounded-t-xl border border-blue-900/50 bg-blue-900/20 p-3 text-sm">
                                 <div className="flex items-center gap-4 text-blue-400">
                                     <div className="flex items-center gap-2">
-                                        <User className="w-4 h-4" />
+                                        <User className="h-4 w-4" />
                                         <span>Compartido por: <strong>Usuario {item.share.sharedBy}</strong></span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <Shield className="w-4 h-4" />
-                                        <span className={`px-2 py-0.5 rounded-full text-xs ${item.share.permission === 'write'
+                                        <Shield className="h-4 w-4" />
+                                        <span className={`rounded-full px-2 py-0.5 text-xs ${item.share.permission === 'write'
                                             ? 'bg-green-500/20 text-green-400'
                                             : 'bg-slate-700 text-slate-300'
                                             }`}>
@@ -131,14 +134,13 @@ export default function SharedWithMe() {
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <Clock className="w-4 h-4" />
+                                        <Clock className="h-4 w-4" />
                                         <span>{getExpirationText(item.share.expiresAt)}</span>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Password Card */}
-                            <div className="border-x border-b border-slate-700 rounded-b-xl overflow-hidden">
+                            <div className="overflow-hidden rounded-b-xl border-x border-b border-slate-700">
                                 <PasswordCard item={item} />
                             </div>
                         </div>

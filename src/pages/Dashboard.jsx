@@ -13,13 +13,10 @@ import BreachCheckModal from '../components/passwords/BreachCheckModal';
 import ExportVaultModal from '../components/settings/ExportVaultModal';
 import ImportVaultModal from '../components/settings/ImportVaultModal';
 
-import { useFolders } from '../context/FolderContext';
-// ...
 export default function Dashboard() {
     const { user } = useAuth();
     const { passwords, checkAllPasswordsForBreaches, filterTag, setFilterTag } = usePasswords();
-    const { currentView, activeFolderId } = useView(); // Destructure activeFolderId correctly
-    const { folders } = useFolders(); // Get folders
+    const { currentView } = useView();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -75,12 +72,6 @@ export default function Dashboard() {
 
     if (currentView === 'trash') {
         viewPasswords = passwords.filter(p => p.isDeleted);
-    } else if (currentView === 'folder' && activeFolderId) {
-        // Filter by Folder
-        // NOTE: We haven't added folderId to passwords yet in Add data, but logic is here.
-        // Assuming passwords have 'folderId' property, or we default to 'root' or unassigned if null?
-        // Actually, if activeFolderId is set, we show items with that folderId.
-        viewPasswords = passwords.filter(p => !p.isDeleted && p.folderId === activeFolderId);
     } else {
         viewPasswords = passwords.filter(p => !p.isDeleted);
         // 2. Filter by favorites if needed
@@ -125,10 +116,6 @@ export default function Dashboard() {
         if (currentView === 'favorites') return 'Favoritos';
         if (currentView === 'trash') return 'Papelera';
         if (currentView === 'settings') return 'Ajustes';
-        if (currentView === 'folder') {
-            const folder = folders.find(f => f.id === activeFolderId);
-            return folder ? folder.name : 'Carpeta';
-        }
         return 'Mi Bóveda';
     };
 

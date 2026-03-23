@@ -1,52 +1,36 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+node_modules/
+dist/
+output/
+playwright-report/
+test-results/
+coverage/
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Environment files
 .env
 .env.local
 .env.*.local
+server/.env
+server/.env.local
+deploy/securevault.secrets.env
 
-# Playwright artifacts
-playwright-report/
-test-results/
-blob-report/
+*.log
+*.tmp
+*.bak
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
 
-# Local runtime artifacts
-output/
 server/backups/
+server/crypto-key-manifest.json
 server/*.db
 server/*.db-shm
 server/*.db-wal
-
-# Local scratch/debug files
-check_users.js
-test_login.js
+server/tests/*.sqlite
+server/tests/*.sqlite-shm
+server/tests/*.sqlite-wal
+server/tests/*.sqlite*
 test_output.txt
-server/check_users.js
-server/test_login.js
-server/reset_password.js
-scripts/check_db_schema.js
-scripts/test_sqlite_insert.js
-scripts/verify_sharing_backend.js
+
+.DS_Store
+Thumbs.db

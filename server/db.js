@@ -1,7 +1,4 @@
 const { Pool } = require('pg');
-const fs = require('fs');
-const path = require('path');
-
 // Check if we should use SQLite
 const useSQLite = process.env.DB_CLIENT === 'sqlite';
 

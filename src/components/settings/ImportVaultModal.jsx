@@ -1,14 +1,23 @@
-import { useState, useRef } from 'react';
-import { X, Upload, AlertTriangle, FileJson, RefreshCw } from 'lucide-react';
+import { useRef, useState } from 'react';
 import CryptoJS from 'crypto-js';
+import Papa from 'papaparse';
+import { X, Upload, AlertTriangle, FileJson, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
+
 import { api } from '../../lib/api';
+import { usePasswords } from '../../context/PasswordContext';
+import { getVaultKey } from '../../lib/env';
+import { encryptCustomFieldsWithKey, encryptStringWithKey } from '../../lib/secretCrypto';
 
 export default function ImportVaultModal({ isOpen, onClose }) {
+    const { fetchAuditLogs, refreshVault } = usePasswords();
     const [password, setPassword] = useState('');
     const [file, setFile] = useState(null);
     const [isRestoring, setIsRestoring] = useState(false);
     const fileInputRef = useRef(null);
+    const vaultKey = getVaultKey();
+
+    const encryptCustomFields = (fields = []) => encryptCustomFieldsWithKey(fields, vaultKey);
 
     if (!isOpen) return null;
 
@@ -19,9 +28,10 @@ export default function ImportVaultModal({ isOpen, onClose }) {
             const isCsv = selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv');
 
             if (!isJson && !isCsv) {
-                toast.error('Por favor selecciona un archivo .json o .csv válido');
+                toast.error('Por favor selecciona un archivo .json o .csv valido');
                 return;
             }
+
             setFile(selectedFile);
         }
     };
@@ -37,7 +47,7 @@ export default function ImportVaultModal({ isOpen, onClose }) {
         const isCsv = file.name.endsWith('.csv');
 
         if (!isCsv && !password) {
-            toast.error('Introduce la contraseña de encriptación para el archivo JSON');
+            toast.error('Introduce la contrasena de encriptacion para el archivo JSON');
             return;
         }
 
@@ -50,97 +60,94 @@ export default function ImportVaultModal({ isOpen, onClose }) {
                 const content = event.target.result;
 
                 if (isCsv) {
-                    // CSV Import logic (Append)
-                    const Papa = await import('papaparse');
-                    Papa.default.parse(content, {
+                    Papa.parse(content, {
                         header: true,
                         skipEmptyLines: true,
                         complete: async (results) => {
                             try {
-                                const SERVER_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'fallback-dev-key';
-                                const itemsToImport = results.data.map(row => {
-                                    const rawPassword = row.password || row.Password || row.Password_value;
-                                    if (!rawPassword) return null;
+                                const itemsToImport = results.data
+                                    .map((row) => {
+                                        const rawPassword = row.password || row.Password || row.Password_value;
+                                        if (!rawPassword) return null;
 
-                                    return {
-                                        title: row.title || row.Title || row.name || 'Sin Título',
-                                        username: row.username || row.Username || row.login_name || '',
-                                        encrypted_password: CryptoJS.AES.encrypt(rawPassword, SERVER_KEY).toString(),
-                                        url: row.url || row.URL || row.website || '',
-                                        meta_person: row.notes || row.Notes || '',
-                                        is_favorite: false,
-                                        tags: row.tags ? row.tags.split(',').map(t => t.trim()) : [],
-                                        custom_fields: []
-                                    };
-                                }).filter(Boolean);
+                                        return {
+                                            title: row.title || row.Title || row.name || 'Sin Titulo',
+                                            username: row.username || row.Username || row.login_name || '',
+                                            encrypted_password: encryptStringWithKey(rawPassword, vaultKey),
+                                            url: row.url || row.URL || row.website || '',
+                                            meta_person: row.notes || row.Notes || '',
+                                            is_favorite: false,
+                                            tags: row.tags ? row.tags.split(',').map((tag) => tag.trim()) : [],
+                                            custom_fields: [],
+                                        };
+                                    })
+                                    .filter(Boolean);
 
                                 if (itemsToImport.length === 0) {
-                                    throw new Error("No se encontraron datos válidos en el CSV");
+                                    throw new Error('No se encontraron datos validos en el CSV');
                                 }
 
                                 await api.post('/vault/import', { items: itemsToImport });
-                                toast.success(`Importadas ${itemsToImport.length} contraseñas correctamente`);
-                                setTimeout(() => window.location.reload(), 1000);
-                            } catch (err) {
-                                toast.error(err.message || 'Error al procesar CSV');
+                                await refreshVault();
+                                await fetchAuditLogs();
+                                toast.success(`Importadas ${itemsToImport.length} contrasenas correctamente`);
+                                setIsRestoring(false);
+                                onClose();
+                            } catch (error) {
+                                toast.error(error.message || 'Error al procesar CSV');
                                 setIsRestoring(false);
                             }
-                        }
+                        },
                     });
-                } else {
-                    // JSON Restore logic (Overwrite)
-                    // 1. Decrypt with User's Backup Password
-                    const bytes = CryptoJS.AES.decrypt(content, password);
-                    const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
 
-                    if (!decryptedString) {
-                        throw new Error('Contraseña incorrecta o archivo dañado');
-                    }
-
-                    // 2. Parse JSON
-                    const vaultData = JSON.parse(decryptedString);
-
-                    if (!vaultData.data || !vaultData.data.passwords) {
-                        throw new Error('Formato de copia de seguridad no válido');
-                    }
-
-                    // 3. Prepare items for Server (Re-encrypt with Server Key)
-                    const SERVER_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'fallback-dev-key';
-                    const { passwords } = vaultData.data;
-
-                    if (!passwords || !Array.isArray(passwords)) {
-                        throw new Error("No hay contraseñas válidas en la copia de seguridad");
-                    }
-
-                    // Prepare passwords payload
-                    const itemsToRestore = passwords.map(p => ({
-                        title: p.title,
-                        username: p.username,
-                        encrypted_password: CryptoJS.AES.encrypt(p.password, SERVER_KEY).toString(), // Re-encrypt
-                        url: p.url || p.website,
-                        meta_person: p.meta_person || p.notes,
-                        is_favorite: p.isFavorite,
-                        tags: p.tags || [],
-                        custom_fields: p.custom_fields || []
-                    }));
-
-                    // 4. Send to API
-                    await api.post('/vault/restore', { items: itemsToRestore });
-
-                    toast.success('Copia de seguridad restaurada correctamente (Sincronizado)');
-
-                    // 5. Reload to apply changes (fetch from server)
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1000);
+                    return;
                 }
 
+                const bytes = CryptoJS.AES.decrypt(content, password);
+                const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
+
+                if (!decryptedString) {
+                    throw new Error('Contrasena incorrecta o archivo danado');
+                }
+
+                const vaultData = JSON.parse(decryptedString);
+
+                if (!vaultData.data || !vaultData.data.passwords) {
+                    throw new Error('Formato de copia de seguridad no valido');
+                }
+
+                const { passwords } = vaultData.data;
+
+                if (!Array.isArray(passwords)) {
+                    throw new Error('No hay contrasenas validas en la copia de seguridad');
+                }
+
+                const itemsToRestore = passwords.map((item) => ({
+                    title: item.title,
+                    username: item.username,
+                    encrypted_password: encryptStringWithKey(item.password, vaultKey),
+                    url: item.url || item.website,
+                    meta_person: item.meta_person || item.notes,
+                    is_favorite: item.isFavorite,
+                    tags: item.tags || [],
+                    custom_fields: encryptCustomFields(item.custom_fields || item.customFields || []),
+                    attachments: item.attachments || [],
+                }));
+
+                await api.post('/vault/restore', { items: itemsToRestore });
+                await refreshVault();
+                await fetchAuditLogs();
+
+                toast.success('Copia de seguridad restaurada correctamente');
+                setIsRestoring(false);
+                onClose();
             } catch (error) {
                 console.error('Import error:', error);
                 toast.error(error.message || 'Error al procesar el archivo');
                 setIsRestoring(false);
             }
         };
+
         reader.readAsText(file);
     };
 
@@ -163,16 +170,15 @@ export default function ImportVaultModal({ isOpen, onClose }) {
                     <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3 mb-6">
                         <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                         <div>
-                            <h4 className="text-red-500 font-semibold text-sm mb-1">¡Acción Destructiva!</h4>
+                            <h4 className="text-red-500 font-semibold text-sm mb-1">Accion destructiva</h4>
                             <p className="text-slate-400 text-sm">
-                                Al restaurar, se <strong>borrarán todos los datos actuales</strong> y se reemplazarán por los de la copia de seguridad. Esta acción no se puede deshacer.
+                                Al restaurar, se <strong>borraran todos los datos actuales</strong> y se reemplazaran por
+                                los de la copia de seguridad. Esta accion no se puede deshacer.
                             </p>
                         </div>
                     </div>
 
                     <form onSubmit={handleRestore} className="space-y-4">
-
-                        {/* File Input */}
                         <div>
                             <label className="block text-sm font-medium text-slate-300 mb-2">Archivo (.json o .csv)</label>
                             <input
@@ -201,18 +207,17 @@ export default function ImportVaultModal({ isOpen, onClose }) {
                             </div>
                         </div>
 
-                        {/* Password - Only for JSON */}
                         {file && !file.name.endsWith('.csv') && (
                             <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-1">Contraseña de desencriptación (JSON)</label>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Contrasena de desencriptacion (JSON)</label>
                                 <input
                                     data-testid="import-json-password"
                                     required
                                     type="password"
-                                    placeholder="••••••••"
+                                    placeholder="........"
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                                     value={password}
-                                    onChange={e => setPassword(e.target.value)}
+                                    onChange={(e) => setPassword(e.target.value)}
                                 />
                             </div>
                         )}
@@ -231,8 +236,8 @@ export default function ImportVaultModal({ isOpen, onClose }) {
                                 type="submit"
                                 disabled={isRestoring}
                                 className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${file?.name.endsWith('.csv')
-                                        ? 'bg-primary hover:bg-emerald-600 shadow-emerald-900/20'
-                                        : 'bg-red-600 hover:bg-red-700 shadow-red-900/20'
+                                    ? 'bg-primary hover:bg-emerald-600 shadow-emerald-900/20'
+                                    : 'bg-red-600 hover:bg-red-700 shadow-red-900/20'
                                     }`}
                             >
                                 {isRestoring ? (

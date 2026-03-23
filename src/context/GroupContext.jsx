@@ -1,109 +1,137 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+
 import { useAuth } from './AuthContext';
 import { api } from '../lib/api';
-import toast from 'react-hot-toast';
 
 const GroupContext = createContext();
 
-export const useGroups = () => useContext(GroupContext);
+export function useGroups() {
+    const context = useContext(GroupContext);
+    if (!context) {
+        throw new Error('useGroups must be used within a GroupProvider');
+    }
 
-export const GroupProvider = ({ children }) => {
+    return context;
+}
+
+export function GroupProvider({ children }) {
     const { user } = useAuth();
     const [groups, setGroups] = useState([]);
+    const [membersByGroup, setMembersByGroup] = useState({});
+
+    const refreshGroups = useCallback(async () => {
+        if (!user) {
+            setGroups([]);
+            setMembersByGroup({});
+            return [];
+        }
+
+        const data = await api.get('/groups');
+        const nextGroups = Array.isArray(data) ? data : [];
+        setGroups(nextGroups);
+        return nextGroups;
+    }, [user]);
+
+    const fetchGroupMembers = useCallback(async (groupId) => {
+        if (!groupId || !user || user.role !== 'admin') {
+            return [];
+        }
+
+        const members = await api.get(`/groups/${groupId}/members`);
+        setMembersByGroup((previous) => ({
+            ...previous,
+            [groupId]: Array.isArray(members) ? members : [],
+        }));
+        return members;
+    }, [user]);
 
     useEffect(() => {
         if (!user) {
             setGroups([]);
+            setMembersByGroup({});
             return;
         }
-        const fetchGroups = async () => {
-            try {
-                const data = await api.get('/groups');
-                setGroups(data);
-            } catch (err) {
-                console.warn("API Groups failed, falling back to local", err);
-                // Fallback to local default groups
-                const local = localStorage.getItem(`groups_${user.email}`);
-                if (local) {
-                    setGroups(JSON.parse(local));
-                } else {
-                    setGroups([{ id: 'g-1', name: 'General', description: 'Grupo por defecto' }]);
-                }
-            }
-        };
-        fetchGroups();
-    }, [user]);
 
-    const saveToLocal = (newGroups) => {
-        if (user?.email) {
-            localStorage.setItem(`groups_${user.email}`, JSON.stringify(newGroups));
-        }
-    };
+        refreshGroups().catch((error) => {
+            console.error('Error loading groups', error);
+            if (error.status !== 403) {
+                toast.error(error.message || 'No se pudieron cargar los grupos');
+            }
+        });
+    }, [refreshGroups, user]);
 
     const createGroup = async (name, description) => {
-        const tempId = Date.now().toString();
-        const newGroup = { id: tempId, name, description, members: [] };
-
         try {
-            const savedGroup = await api.post('/groups', { name, description });
-            setGroups(prev => [...prev, savedGroup]);
-            return savedGroup;
-        } catch (err) {
-            setGroups(prev => {
-                const newState = [...prev, newGroup];
-                saveToLocal(newState);
-                return newState;
-            });
-            toast.success('Grupo creado (Offline)');
-            return newGroup;
+            const group = await api.post('/groups', { name, description });
+            setGroups((previous) => [...previous, group]);
+            await fetchGroupMembers(group.id);
+            return group;
+        } catch (error) {
+            console.error('Error creating group', error);
+            toast.error(error.message || 'No se pudo crear el grupo');
+            return null;
         }
     };
 
-    // Stubbing members for offline since specific member management is complex without a real user DB
-    const getGroupMembers = (groupId) => {
-        const group = groups.find(g => g.id === groupId);
-        return group?.members || [];
-    };
-
-    const updateGroup = () => { };
-    const deleteGroup = () => { };
-
-    const addMember = async (groupId, userId, role) => {
+    const addMember = async (groupId, userId, role = 'member') => {
         try {
             await api.post(`/groups/${groupId}/members`, { userId, role });
-            toast.success('Miembro añadido');
-        } catch (e) {
-            // Offline: just update local state
-            setGroups(prev => {
-                const newState = prev.map(g => {
-                    if (g.id === groupId) {
-                        const newMember = { userId, role, addedAt: new Date() };
-                        return { ...g, members: [...(g.members || []), newMember] };
-                    }
-                    return g;
-                });
-                saveToLocal(newState);
-                return newState;
-            });
-            toast.success('Miembro añadido (Offline)');
+            await fetchGroupMembers(groupId);
+            return true;
+        } catch (error) {
+            console.error('Error adding group member', error);
+            toast.error(error.message || 'No se pudo anadir el miembro');
+            return false;
         }
     };
 
-    const removeMember = () => { };
-    const getUserGroups = () => groups;
+    const removeMember = async (groupId, userId) => {
+        try {
+            await api.delete(`/groups/${groupId}/members/${userId}`);
+            await fetchGroupMembers(groupId);
+            return true;
+        } catch (error) {
+            console.error('Error removing group member', error);
+            toast.error(error.message || 'No se pudo eliminar el miembro');
+            return false;
+        }
+    };
+
+    const deleteGroup = async (groupId) => {
+        try {
+            await api.delete(`/groups/${groupId}`);
+            setGroups((previous) => previous.filter((group) => group.id !== groupId));
+            setMembersByGroup((previous) => {
+                const next = { ...previous };
+                delete next[groupId];
+                return next;
+            });
+            return true;
+        } catch (error) {
+            console.error('Error deleting group', error);
+            toast.error(error.message || 'No se pudo eliminar el grupo');
+            return false;
+        }
+    };
+
+    const getGroupMembers = (groupId) => membersByGroup[groupId] || [];
 
     return (
-        <GroupContext.Provider value={{
-            groups,
-            createGroup,
-            updateGroup,
-            deleteGroup,
-            addMember,
-            removeMember,
-            getGroupMembers,
-            getUserGroups
-        }}>
+        <GroupContext.Provider
+            value={{
+                addMember,
+                createGroup,
+                deleteGroup,
+                fetchGroupMembers,
+                getGroupMembers,
+                getUserGroups: () => groups,
+                groups,
+                removeMember,
+                updateGroup: async () => false,
+            }}
+        >
             {children}
         </GroupContext.Provider>
     );
-};
+}

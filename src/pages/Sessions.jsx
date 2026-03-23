@@ -14,8 +14,8 @@ export default function Sessions() {
             setLoading(true);
             const data = await api.get('/auth/sessions');
             setSessions(data);
-        } catch (err) {
-            console.error(err);
+        } catch (error) {
+            console.error(error);
             toast.error('Error al cargar sesiones');
         } finally {
             setLoading(false);
@@ -32,7 +32,7 @@ export default function Sessions() {
             await api.delete(`/auth/sessions/${id}`);
             toast.success('Sesión cerrada');
             fetchSessions();
-        } catch (err) {
+        } catch (_err) {
             toast.error('Error al cerrar sesión');
         }
     };

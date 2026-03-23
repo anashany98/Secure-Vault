@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { User, Shield, Activity, Clock, Sun, Moon, Upload, RefreshCw, Database } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { User, Shield, Activity, Clock, Sun, Moon, Upload, RefreshCw, Database, Files, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+
 import { useAuth } from '../context/AuthContext';
 import { useConfig } from '../context/ConfigContext';
 import { usePasswords } from '../context/PasswordContext';
@@ -9,38 +11,44 @@ import ExportVaultModal from '../components/settings/ExportVaultModal';
 import ImportVaultModal from '../components/settings/ImportVaultModal';
 import UsersManager from '../components/settings/UsersManager';
 import TwoFactorSettings from '../components/settings/TwoFactorSettings';
-import toast from 'react-hot-toast';
 
 export default function Settings() {
     const { user: currentUser } = useAuth();
-    const { auditLog } = usePasswords();
-    const { theme, toggleTheme, isDark } = useTheme();
+    const { auditLogs, deleteTemplate, templates } = usePasswords();
+    const { toggleTheme, isDark } = useTheme();
     const { config, updateConfig } = useConfig();
-
-    // Config state
     const [companyNameLocal, setCompanyNameLocal] = useState('');
-
     const [activeTab, setActiveTab] = useState('preferences');
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
-
-    // Helper for role check
     const isAdmin = currentUser?.role === 'admin';
 
-    const handleUpdateConfig = () => {
-        updateConfig({ company_name: companyNameLocal });
-        toast.success('Configuración guardada');
-    };
+    useEffect(() => {
+        if (config?.company_name) {
+            setCompanyNameLocal(config.company_name);
+        }
+    }, [config?.company_name]);
 
-    // Initialize local state
-    if (!companyNameLocal && config?.company_name) setCompanyNameLocal(config.company_name);
+    const handleUpdateConfig = async () => {
+        const success = await updateConfig({ company_name: companyNameLocal });
+        if (success) {
+            toast.success('Configuracion guardada');
+            return;
+        }
+
+        toast.error('No se pudo guardar la configuracion');
+    };
 
     const getActionColor = (action) => {
         switch (action) {
-            case 'CREATE': return 'text-emerald-400 bg-emerald-500/10';
-            case 'DELETE': return 'text-red-400 bg-red-500/10';
-            case 'UPDATE': return 'text-amber-400 bg-amber-500/10';
-            default: return 'text-blue-400 bg-blue-500/10';
+            case 'CREATE':
+                return 'text-emerald-400 bg-emerald-500/10';
+            case 'DELETE':
+                return 'text-red-400 bg-red-500/10';
+            case 'UPDATE':
+                return 'text-amber-400 bg-amber-500/10';
+            default:
+                return 'text-blue-400 bg-blue-500/10';
         }
     };
 
@@ -49,11 +57,10 @@ export default function Settings() {
             <div className="mb-8 flex items-end justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-2">Ajustes del Sistema</h1>
-                    <p className="text-slate-400">Panel de control de administración</p>
+                    <p className="text-slate-400">Panel de control de administracion</p>
                 </div>
             </div>
 
-            {/* Tabs */}
             <div className="flex gap-4 border-b border-slate-700 mb-8 overflow-x-auto">
                 {isAdmin && (
                     <button
@@ -98,28 +105,39 @@ export default function Settings() {
                     </div>
                 </button>
                 <button
-                    data-testid="settings-tab-company"
-                    onClick={() => setActiveTab('config')}
-                    className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'config' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
+                    onClick={() => setActiveTab('templates')}
+                    className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
                 >
                     <div className="flex items-center gap-2">
-                        <Database className="w-4 h-4" />
-                        Empresa
+                        <Files className="w-4 h-4" />
+                        Plantillas
                     </div>
                 </button>
+                {isAdmin && (
+                    <button
+                        data-testid="settings-tab-company"
+                        onClick={() => setActiveTab('config')}
+                        className={`pb-3 px-4 text-sm font-bold transition-colors border-b-2 ${activeTab === 'config' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-white'}`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Database className="w-4 h-4" />
+                            Empresa
+                        </div>
+                    </button>
+                )}
             </div>
 
-            {activeTab === 'config' ? (
+            {activeTab === 'config' && isAdmin ? (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <div className="bg-surface border border-slate-700 rounded-2xl p-6">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <Database className="w-5 h-5 text-primary" />
-                            Datos de la Organización
+                            Datos de la Organizacion
                         </h3>
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1.5">Nombre de la Empresa</label>
-                                <p className="text-xs text-slate-500 mb-2">Este nombre aparecerá en las etiquetas de inventario y reportes.</p>
+                                <p className="text-xs text-slate-500 mb-2">Este nombre aparecera en las etiquetas de inventario y reportes.</p>
                                 <div className="flex gap-2">
                                     <input
                                         type="text"
@@ -153,7 +171,7 @@ export default function Settings() {
                             Auto-logout por Inactividad
                         </h3>
                         <p className="text-sm text-slate-400 mb-4">
-                            Cierra sesión automáticamente después de un período de inactividad
+                            Cierra sesion automaticamente despues de un periodo de inactividad
                         </p>
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
@@ -194,12 +212,10 @@ export default function Settings() {
                                     toggleTheme();
                                     toast.success(`Tema ${isDark ? 'claro' : 'oscuro'} activado`);
                                 }}
-                                className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${isDark ? 'bg-primary' : 'bg-slate-700'
-                                    }`}
+                                className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${isDark ? 'bg-primary' : 'bg-slate-700'}`}
                             >
                                 <span
-                                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${isDark ? 'translate-x-7' : 'translate-x-1'
-                                        }`}
+                                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${isDark ? 'translate-x-7' : 'translate-x-1'}`}
                                 />
                             </button>
                         </div>
@@ -212,10 +228,10 @@ export default function Settings() {
                     <div className="bg-surface border border-slate-700 rounded-2xl p-6">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <Database className="w-5 h-5 text-primary" />
-                            Gestión de Datos
+                            Gestion de Datos
                         </h3>
                         <p className="text-sm text-slate-400 mb-6">
-                            Exporta tu información para tener una copia de seguridad segura o restaura una copia previa.
+                            Exporta tu informacion para tener una copia de seguridad segura o restaura una copia previa.
                         </p>
 
                         <div className="space-y-4">
@@ -251,6 +267,48 @@ export default function Settings() {
                         </div>
                     </div>
                 </div>
+            ) : activeTab === 'templates' ? (
+                <div className="bg-surface border border-slate-700 rounded-2xl p-6">
+                    <div className="mb-4">
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                            <Files className="w-5 h-5 text-primary" />
+                            Plantillas de credenciales
+                        </h3>
+                        <p className="text-sm text-slate-400 mt-1">
+                            Reutiliza estructuras de alta frecuentes para SaaS, VPN, tenants o equipos.
+                        </p>
+                    </div>
+
+                    {templates.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-800 px-6 py-10 text-center text-slate-500">
+                            Todavia no hay plantillas guardadas.
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {templates.map((template) => (
+                                <div
+                                    key={template.id}
+                                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/50 px-4 py-3"
+                                >
+                                    <div className="min-w-0">
+                                        <p className="truncate font-medium text-white">{template.name}</p>
+                                        <p className="truncate text-sm text-slate-400">
+                                            {template.title} · {template.username || 'Sin usuario'}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => deleteTemplate(template.id)}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Eliminar
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             ) : (
                 <div className="bg-surface border border-slate-700 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <div className="p-6 border-b border-slate-700">
@@ -259,24 +317,24 @@ export default function Settings() {
                             Historial de Cambios
                         </h2>
                         <p className="text-slate-400 text-sm mt-1">
-                            Registro de auditoría de todas las acciones sobre las contraseñas.
+                            Registro de auditoria de todas las acciones sobre las contrasenas.
                         </p>
                     </div>
 
                     <div className="max-h-[600px] overflow-y-auto">
-                        {auditLog && auditLog.length > 0 ? (
+                        {auditLogs.length > 0 ? (
                             <table className="w-full text-left border-collapse">
                                 <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-bold sticky top-0 backdrop-blur-sm">
                                     <tr>
                                         <th className="p-4">Fecha</th>
                                         <th className="p-4">Usuario</th>
-                                        <th className="p-4">Acción</th>
+                                        <th className="p-4">Accion</th>
                                         <th className="p-4">Elemento</th>
                                         <th className="p-4">Detalles</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-700">
-                                    {auditLog.map(log => (
+                                    {auditLogs.map((log) => (
                                         <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
                                             <td className="p-4 text-slate-400 text-sm font-mono whitespace-nowrap">
                                                 {new Date(log.timestamp).toLocaleString()}
@@ -302,7 +360,7 @@ export default function Settings() {
                         ) : (
                             <div className="p-12 text-center text-slate-500">
                                 <Activity className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                                <p>No hay actividad registrada aún.</p>
+                                <p>No hay actividad registrada aun.</p>
                             </div>
                         )}
                     </div>

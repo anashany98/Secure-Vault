@@ -1,128 +1,121 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+
 import { useAuth } from './AuthContext';
 import { api } from '../lib/api';
-import toast from 'react-hot-toast';
+import { normalizeInventoryItem } from '../lib/modelAdapters';
 
 const InventoryContext = createContext();
 
-export const useInventory = () => useContext(InventoryContext);
+export function useInventory() {
+    const context = useContext(InventoryContext);
+    if (!context) {
+        throw new Error('useInventory must be used within an InventoryProvider');
+    }
 
-export const InventoryProvider = ({ children }) => {
+    return context;
+}
+
+function appendHistoryEvent(item, event) {
+    return {
+        ...item,
+        history: [
+            {
+                ...event,
+                date: event.date || new Date().toISOString(),
+                id: event.id || crypto.randomUUID(),
+            },
+            ...(Array.isArray(item.history) ? item.history : []),
+        ],
+    };
+}
+
+export function InventoryProvider({ children }) {
     const { user } = useAuth();
     const [items, setItems] = useState([]);
 
+    const refreshInventory = useCallback(async () => {
+        if (!user || user.role !== 'admin') {
+            setItems([]);
+            return [];
+        }
+
+        const data = await api.get('/inventory');
+        const nextItems = (Array.isArray(data) ? data : []).map(normalizeInventoryItem);
+        setItems(nextItems);
+        return nextItems;
+    }, [user]);
+
     useEffect(() => {
-        if (!user) {
+        if (!user || user.role !== 'admin') {
             setItems([]);
             return;
         }
-        const fetchInventory = async () => {
-            try {
-                const data = await api.get('/inventory');
-                setItems(data);
-            } catch (err) {
-                console.warn("API Inventory failed, falling back to LocalStorage", err);
-                const localData = localStorage.getItem(`inventory_${user.email}`);
-                if (localData) {
-                    setItems(JSON.parse(localData));
-                } else {
-                    setItems([]);
-                }
-            }
-        };
-        fetchInventory();
-    }, [user]);
 
-    const saveToLocal = (newItems) => {
-        if (user?.email) {
-            localStorage.setItem(`inventory_${user.email}`, JSON.stringify(newItems));
-        }
-    };
+        refreshInventory().catch((error) => {
+            console.error('Error loading inventory', error);
+            toast.error(error.message || 'No se pudo cargar el inventario');
+        });
+    }, [refreshInventory, user]);
 
     const addItem = async (newItem) => {
-        const tempId = Date.now().toString();
-        const itemWithId = { ...newItem, id: tempId, isDeleted: false };
         try {
             const savedItem = await api.post('/inventory', newItem);
-            setItems(prev => [...prev, savedItem]);
-            toast.success('Ítem añadido');
-        } catch (err) {
-            setItems(prev => {
-                const newState = [...prev, itemWithId];
-                saveToLocal(newState);
-                return newState;
-            });
-            toast.success('Ítem añadido (Offline)');
+            setItems((previous) => [normalizeInventoryItem(savedItem), ...previous]);
+            toast.success('Dispositivo anadido');
+            return { success: true };
+        } catch (error) {
+            console.error('Error adding inventory item', error);
+            toast.error(error.message || 'No se pudo anadir el dispositivo');
+            return { success: false, error: error.message };
         }
     };
 
     const updateItem = async (id, updates) => {
         try {
-            if (id.toString().length < 15) {
-                const updatedItem = await api.put(`/inventory/${id}`, updates);
-                setItems(prev => prev.map(i => i.id === id ? updatedItem : i));
-            } else {
-                throw new Error("Offline ID");
-            }
-            toast.success('Ítem actualizado');
-        } catch (err) {
-            setItems(prev => {
-                const newState = prev.map(i => i.id === id ? { ...i, ...updates } : i);
-                saveToLocal(newState);
-                return newState;
-            });
-            toast.success('Ítem actualizado (Offline)');
+            const updatedItem = await api.put(`/inventory/${id}`, updates);
+            setItems((previous) =>
+                previous.map((item) => (item.id === id ? normalizeInventoryItem(updatedItem) : item))
+            );
+            toast.success('Dispositivo actualizado');
+            return { success: true };
+        } catch (error) {
+            console.error('Error updating inventory item', error);
+            toast.error(error.message || 'No se pudo actualizar el dispositivo');
+            return { success: false, error: error.message };
         }
     };
 
     const deleteItem = async (id) => {
         try {
-            if (id.toString().length < 15) {
-                await api.delete(`/inventory/${id}`);
-            } else {
-                throw new Error("Offline ID");
-            }
-            // Soft delete simulation
-            setItems(prev => prev.map(i => i.id === id ? { ...i, isDeleted: true, deletedAt: new Date().toISOString() } : i));
-            toast.success('Ítem eliminado');
-        } catch (err) {
-            setItems(prev => {
-                const newState = prev.map(i => i.id === id ? { ...i, isDeleted: true, deletedAt: new Date().toISOString() } : i);
-                saveToLocal(newState);
-                return newState;
-            });
-            toast.success('Ítem eliminado (Offline)');
+            await api.delete(`/inventory/${id}`);
+            setItems((previous) => previous.filter((item) => item.id !== id));
+            toast.success('Dispositivo eliminado');
+        } catch (error) {
+            console.error('Error deleting inventory item', error);
+            toast.error(error.message || 'No se pudo eliminar el dispositivo');
         }
     };
 
-    const restoreItem = (id) => {
-        setItems(prev => {
-            const newState = prev.map(i => i.id === id ? { ...i, isDeleted: false, deletedAt: null } : i);
-            saveToLocal(newState);
-            return newState;
-        });
-        toast.success('Ítem restaurado');
-    };
-
-    const permanentlyDeleteItem = (id) => {
-        setItems(prev => {
-            const newState = prev.filter(i => i.id !== id);
-            saveToLocal(newState);
-            return newState;
-        });
-        toast.success('Ítem eliminado permanentemente');
+    const addHistoryEvent = (id, event) => {
+        setItems((previous) =>
+            previous.map((item) => (item.id === id ? appendHistoryEvent(item, event) : item))
+        );
     };
 
     return (
-        <InventoryContext.Provider value={{
-            items,
-            addItem,
-            updateItem,
-            deleteItem,
-            restoreItem,
-            permanentlyDeleteItem
-        }}>
+        <InventoryContext.Provider
+            value={{
+                addHistoryEvent,
+                addItem,
+                deleteItem,
+                inventory: items,
+                items,
+                refreshInventory,
+                updateItem,
+            }}
+        >
             {children}
         </InventoryContext.Provider>
     );
-};
+}

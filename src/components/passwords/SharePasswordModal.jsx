@@ -7,7 +7,7 @@ import { useGroups } from '../../context/GroupContext';
 
 export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
     const { sharePassword, getPasswordShares, revokeShare } = usePasswords();
-    const { usersList } = useAuth();
+    const { usersList, vaultAccess } = useAuth();
     const { groups, getGroupMembers } = useGroups();
     const [shareType, setShareType] = useState('user'); // 'user' | 'group'
     const [selectedId, setSelectedId] = useState('');
@@ -18,8 +18,9 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
 
     const currentShares = getPasswordShares(passwordItem.id);
     const availableUsers = usersList.filter(u => u.email !== 'admin@company.com');
+    const internalSharingDisabled = vaultAccess?.mode === 'team';
 
-    const handleShare = () => {
+    const handleShare = async () => {
         if (!selectedId) {
             alert('Selecciona un destinatario');
             return;
@@ -53,10 +54,10 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
         const expiresIn = expirationMap[expiration];
 
         let successCount = 0;
-        targets.forEach(userId => {
-            const result = sharePassword(passwordItem.id, userId, permission, expiresIn);
+        for (const userId of targets) {
+            const result = await sharePassword(passwordItem.id, userId, permission, expiresIn);
             if (result.success) successCount++;
-        });
+        }
 
         if (successCount > 0) {
             setSelectedId('');
@@ -111,6 +112,12 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
                             Nuevo Acceso Compartido
                         </h3>
 
+                        {internalSharingDisabled ? (
+                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-200">
+                                Los miembros autorizados del equipo ya ven toda la team vault.
+                                Usa un enlace publico temporal solo cuando necesites entregar una clave puntual fuera del sistema.
+                            </div>
+                        ) : (
                         <div className="space-y-4">
                             {/* Type Selection */}
                             <div className="flex gap-2 mb-4">
@@ -215,6 +222,7 @@ export default function SharePasswordModal({ isOpen, onClose, passwordItem }) {
                                 Compartir Acceso
                             </button>
                         </div>
+                        )}
                     </div>
 
                     {/* Current Shares */}

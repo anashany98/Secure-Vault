@@ -1,9 +1,10 @@
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
-const { pool } = require('../db');
 
-const BACKUP_DIR = process.env.BACKUP_PATH || path.join(__dirname, '../backups');
+const { resolveBackupDirectory, resolveBackupFilePath, writeBackupFile } = require('./disasterRecovery');
+
+const BACKUP_DIR = resolveBackupDirectory();
 
 // Ensure backup directory exists
 if (!fs.existsSync(BACKUP_DIR)) {
@@ -12,20 +13,16 @@ if (!fs.existsSync(BACKUP_DIR)) {
 
 const runBackup = async () => {
     console.log('--- Starting automated backup ---');
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupFile = path.join(BACKUP_DIR, `backup-${timestamp}.json`);
 
     try {
-        const tables = ['users', 'vault_items', 'audit_logs'];
-        const backupData = {};
-
-        for (const table of tables) {
-            const result = await pool.query(`SELECT * FROM ${table}`);
-            backupData[table] = result.rows;
-        }
-
-        fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2));
-        console.log(`Backup successfully saved to: ${backupFile}`);
+        const { backupPath, rowCounts } = await writeBackupFile(resolveBackupFilePath(
+            path.join(
+                BACKUP_DIR,
+                `backup-${new Date().toISOString().replace(/[:.]/g, '-')}`
+            )
+        ));
+        console.log(`Backup successfully saved to: ${backupPath}`);
+        console.log(`Backup tables: ${Object.keys(rowCounts).length}`);
 
         // Cleanup: keep only last 7 backups
         const files = fs.readdirSync(BACKUP_DIR)

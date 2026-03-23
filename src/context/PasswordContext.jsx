@@ -1,362 +1,607 @@
-import { createContext, useContext, useState, useEffect } from 'react';
 import CryptoJS from 'crypto-js';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+
 import { useAuth } from './AuthContext';
+import { useVaultSecurity } from './VaultSecurityContext';
 import { useUsage } from './UsageContext';
 import { api } from '../lib/api';
-import toast from 'react-hot-toast';
+import {
+    buildEncryptedAttachmentPayload,
+    MAX_ATTACHMENTS_PER_ITEM,
+} from '../lib/attachments';
+import { getVaultKey } from '../lib/env';
+import {
+    decryptCustomFieldsWithKey,
+    decryptStringWithKey,
+    encryptCustomFieldsWithKey,
+    encryptStringWithKey,
+} from '../lib/secretCrypto';
+import {
+    normalizeAuditLog,
+    normalizePasswordAttachment,
+    normalizePasswordItem,
+    normalizeShare,
+    normalizeTemplate,
+    normalizeTags,
+} from '../lib/modelAdapters';
 
 const PasswordContext = createContext();
 
-export const usePasswords = () => useContext(PasswordContext);
+export function usePasswords() {
+    const context = useContext(PasswordContext);
+    if (!context) {
+        throw new Error('usePasswords must be used within a PasswordProvider');
+    }
 
-const ENCRYPTION_KEY = import.meta.env.VITE_VAULT_KEY || 'fallback-dev-key';
+    return context;
+}
 
-export const PasswordProvider = ({ children }) => {
+function encryptValue(value) {
+    return encryptStringWithKey(value, getVaultKey());
+}
+
+function decryptValue(value) {
+    return decryptStringWithKey(value, getVaultKey());
+}
+
+function encryptCustomFields(fields = []) {
+    return encryptCustomFieldsWithKey(fields, getVaultKey());
+}
+
+function decryptCustomFields(fields = []) {
+    return decryptCustomFieldsWithKey(fields, getVaultKey());
+}
+
+function hydratePassword(item, previousBreachCount = 0) {
+    const normalized = normalizePasswordItem(item);
+    const decryptedPassword = decryptValue(normalized.encryptedPassword);
+    const decryptedCustomFields = decryptCustomFields(normalized.customFields);
+    const share = normalized.permission
+        ? {
+            id: normalized.shareId,
+            permission: normalized.permission,
+            expiresAt: normalized.expiresAt,
+            sharedBy: normalized.sharedBy,
+        }
+        : null;
+
+    return {
+        ...normalized,
+        attachments: Array.isArray(normalized.attachments) ? normalized.attachments : [],
+        breachCount: normalized.breachCount ?? previousBreachCount ?? 0,
+        customFields: decryptedCustomFields,
+        custom_fields: decryptedCustomFields,
+        password: decryptedPassword,
+        share,
+    };
+}
+
+function buildPasswordPayload(password) {
+    const renewalIntervalDays = password.renewalIntervalDays
+        ?? password.renewal_interval_days
+        ?? null;
+    const nextReviewAt = password.nextReviewAt
+        ?? password.next_review_at
+        ?? null;
+
+    return {
+        custom_fields: encryptCustomFields(password.custom_fields ?? password.customFields ?? []),
+        encrypted_password: encryptValue(password.password),
+        folder_id: password.folderId ?? password.folder_id ?? null,
+        is_favorite: Boolean(password.isFavorite ?? password.is_favorite),
+        meta_person: password.owner ?? password.meta_person ?? password.notes ?? '',
+        next_review_at: nextReviewAt || null,
+        renewal_interval_days: renewalIntervalDays === '' || renewalIntervalDays === undefined
+            ? null
+            : Number(renewalIntervalDays),
+        tags: normalizeTags(password.tags),
+        title: password.title,
+        url: password.website ?? password.url ?? '',
+        username: password.username ?? '',
+    };
+}
+
+function buildTemplatePayload(template) {
+    return {
+        custom_fields: template.custom_fields ?? template.customFields ?? [],
+        meta_person: template.owner ?? template.meta_person ?? template.notes ?? '',
+        name: template.name,
+        renewal_interval_days: template.renewalIntervalDays ?? template.renewal_interval_days ?? null,
+        tags: normalizeTags(template.tags),
+        title: template.title,
+        url: template.website ?? template.url ?? '',
+        username: template.username ?? '',
+    };
+}
+
+function summarizeAttachmentFailures(failures) {
+    if (!Array.isArray(failures) || failures.length === 0) {
+        return '';
+    }
+
+    if (failures.length === 1) {
+        return failures[0].fileName;
+    }
+
+    return `${failures[0].fileName} y ${failures.length - 1} mas`;
+}
+
+export function PasswordProvider({ children }) {
     const { user } = useAuth();
+    const { isVaultReady } = useVaultSecurity();
     const { trackCreate, trackDelete } = useUsage();
     const [passwords, setPasswords] = useState([]);
     const [auditLogs, setAuditLogs] = useState([]);
-    const [filterTag, setFilterTag] = useState(null); // null means no filter
+    const [shares, setShares] = useState([]);
+    const [templates, setTemplates] = useState([]);
+    const [filterTag, setFilterTag] = useState(null);
 
-    // Helper to persist to local storage for offline capability
-    const syncToLocal = (data) => {
-        if (user?.email) {
-            localStorage.setItem(`vault_${user.email}`, JSON.stringify(data));
+    const refreshVault = useCallback(async () => {
+        if (!user || !isVaultReady) {
+            setPasswords([]);
+            return [];
         }
-    };
 
-    const refreshVault = async () => {
-        if (!user) return;
-        try {
-            const items = await api.get('/vault');
-            const decrypted = items.map(item => {
-                try {
-                    const bytes = CryptoJS.AES.decrypt(item.encrypted_password, ENCRYPTION_KEY);
-                    const originalPassword = bytes.toString(CryptoJS.enc.Utf8);
+        const items = await api.get('/vault');
+        const nextItems = Array.isArray(items) ? items : [];
 
-                    // Decrypt custom fields
-                    let decryptedFields = [];
-                    if (item.custom_fields && Array.isArray(item.custom_fields)) {
-                        decryptedFields = item.custom_fields.map(f => {
-                            try {
-                                const fb = CryptoJS.AES.decrypt(f.value, ENCRYPTION_KEY);
-                                return { ...f, value: fb.toString(CryptoJS.enc.Utf8) };
-                            } catch (e) { return f; }
-                        });
-                    }
+        setPasswords((previous) => {
+            const breachMap = new Map(previous.map((item) => [item.id, item.breachCount || 0]));
+            return nextItems.map((item) => hydratePassword(item, breachMap.get(item.id)));
+        });
 
-                    return { ...item, password: originalPassword, custom_fields: decryptedFields };
-                } catch (e) {
-                    console.error("Decryption failed for item", item.id);
-                    return { ...item, password: 'ERROR' };
-                }
-            });
-            setPasswords(prev => {
-                const prevMap = new Map(prev.map(p => [p.id, p.breachCount || 0]));
-                return decrypted.map(item => ({
-                    ...item,
-                    breachCount: prevMap.get(item.id) || 0
-                }));
-            });
-            syncToLocal(decrypted);
-        } catch (err) {
-            console.warn("API Vault failed, falling back to LocalStorage", err);
-            const localData = localStorage.getItem(`vault_${user.email}`);
-            if (localData) {
-                setPasswords(JSON.parse(localData));
-                if (passwords.length === 0) toast('Modo Offline: Usando datos locales', { icon: '📂' });
-            }
+        return nextItems;
+    }, [isVaultReady, user]);
+
+    const refreshShares = useCallback(async () => {
+        if (!user || !isVaultReady) {
+            setShares([]);
+            return [];
         }
-    };
 
-    // Fetch passwords on mount or user change
+        const data = await api.get('/shares/internal/outgoing');
+        const nextShares = (Array.isArray(data) ? data : []).map(normalizeShare);
+        setShares(nextShares);
+        return nextShares;
+    }, [isVaultReady, user]);
+
+    const fetchAuditLogs = useCallback(async () => {
+        if (!user || !isVaultReady) {
+            setAuditLogs([]);
+            return [];
+        }
+
+        const items = await api.get('/audit');
+        const nextLogs = (Array.isArray(items) ? items : []).map(normalizeAuditLog);
+        setAuditLogs(nextLogs);
+        return nextLogs;
+    }, [isVaultReady, user]);
+
+    const refreshTemplates = useCallback(async () => {
+        if (!user || !isVaultReady) {
+            setTemplates([]);
+            return [];
+        }
+
+        const data = await api.get('/templates');
+        const nextTemplates = (Array.isArray(data) ? data : [])
+            .map(normalizeTemplate)
+            .filter(Boolean);
+        setTemplates(nextTemplates);
+        return nextTemplates;
+    }, [isVaultReady, user]);
+
     useEffect(() => {
-        if (user) {
-            refreshVault();
-            refreshShares();
-            fetchAuditLogs();
-        } else {
+        if (!user || !isVaultReady) {
             setPasswords([]);
             setShares([]);
+            setAuditLogs([]);
+            setTemplates([]);
+            return;
         }
-    }, [user]);
 
-    const fetchAuditLogs = async () => {
+        Promise.all([refreshVault(), refreshShares(), fetchAuditLogs(), refreshTemplates()]).catch((error) => {
+            console.error('Error loading vault data', error);
+            toast.error(error.message || 'No se pudo cargar la boveda');
+        });
+    }, [fetchAuditLogs, isVaultReady, refreshShares, refreshTemplates, refreshVault, user]);
+
+    const getPasswordAttachments = async (passwordId) => {
         try {
-            const items = await api.get('/audit');
-            setAuditLogs(items);
-        } catch (err) {
-            console.error("Fetch audit logs failed", err);
+            const data = await api.get(`/vault/${passwordId}/attachments`);
+            return (Array.isArray(data) ? data : [])
+                .map(normalizePasswordAttachment)
+                .filter(Boolean);
+        } catch (error) {
+            console.error('Error loading attachments', error);
+            throw error;
+        }
+    };
+
+    const uploadPasswordAttachment = async (passwordId, file, options = {}) => {
+        const { quiet = false } = options;
+        const payload = await buildEncryptedAttachmentPayload(file);
+        const data = await api.post(`/vault/${passwordId}/attachments`, payload);
+        const attachment = normalizePasswordAttachment(data);
+
+        if (!quiet) {
+            toast.success(`Adjunto ${attachment.fileName} subido`);
+        }
+
+        return attachment;
+    };
+
+    const deletePasswordAttachment = async (passwordId, attachmentId, options = {}) => {
+        const { quiet = false } = options;
+        await api.delete(`/vault/${passwordId}/attachments/${attachmentId}`);
+
+        if (!quiet) {
+            toast.success('Adjunto eliminado');
+        }
+    };
+
+    const processAttachmentChanges = async (
+        passwordId,
+        { attachments = [], attachmentsToAdd = [], attachmentsToDelete = [] } = {}
+    ) => {
+        const filesToAdd = [...attachmentsToAdd, ...attachments].filter(Boolean);
+        const idsToDelete = attachmentsToDelete.filter(Boolean);
+        const failures = [];
+
+        for (const attachmentId of idsToDelete) {
+            try {
+                await deletePasswordAttachment(passwordId, attachmentId, { quiet: true });
+            } catch (error) {
+                failures.push({
+                    action: 'delete',
+                    fileName: attachmentId,
+                    message: error.message || 'No se pudo eliminar el adjunto',
+                });
+            }
+        }
+
+        for (const file of filesToAdd) {
+            try {
+                await uploadPasswordAttachment(passwordId, file, { quiet: true });
+            } catch (error) {
+                failures.push({
+                    action: 'upload',
+                    fileName: file.name,
+                    message: error.message || 'No se pudo subir el adjunto',
+                });
+            }
+        }
+
+        return {
+            failures,
+            processedCount: filesToAdd.length + idsToDelete.length,
+        };
+    };
+
+    const addPassword = async (newPassword) => {
+        try {
+            const attachments = Array.isArray(newPassword.attachments) ? newPassword.attachments : [];
+            if (attachments.length > MAX_ATTACHMENTS_PER_ITEM) {
+                throw new Error(`Maximo ${MAX_ATTACHMENTS_PER_ITEM} adjuntos por contrasena`);
+            }
+
+            const created = await api.post('/vault', buildPasswordPayload(newPassword));
+            const attachmentResult = await processAttachmentChanges(created.id, { attachments });
+
+            await refreshVault();
+            await fetchAuditLogs();
+            trackCreate();
+
+            if (attachmentResult.failures.length > 0) {
+                toast.success('Contrasena guardada');
+                toast.error(`Algunos adjuntos no se subieron: ${summarizeAttachmentFailures(attachmentResult.failures)}`);
+            } else {
+                toast.success('Contrasena guardada');
+            }
+
+            return {
+                success: true,
+                partial: attachmentResult.failures.length > 0,
+                item: hydratePassword(created),
+                attachmentFailures: attachmentResult.failures,
+            };
+        } catch (error) {
+            console.error('Error adding password', error);
+            toast.error(error.message || 'No se pudo guardar la contrasena');
+            return { success: false, error: error.message };
         }
     };
 
     const bulkAddPasswords = async (items) => {
         const toastId = toast.loading('Encriptando e importando...');
+
         try {
-            // Encrypt client-side before sending
-            const encryptedItems = items.map(item => {
-                const encrypted = CryptoJS.AES.encrypt(item.password || '', ENCRYPTION_KEY).toString();
-                return {
-                    title: item.title,
-                    username: item.username,
-                    encrypted_password: encrypted,
-                    url: item.url,
-                    meta_person: item.meta_person,
-                    is_favorite: false,
-                    tags: [],
-                    custom_fields: JSON.stringify([])
-                };
-            });
+            const payload = items.map((item) => buildPasswordPayload({
+                ...item,
+                custom_fields: item.custom_fields ?? item.customFields ?? [],
+                notes: item.meta_person ?? item.owner ?? item.notes ?? '',
+                tags: item.tags ?? [],
+            }));
 
-            const response = await api.post('/vault/import', { items: encryptedItems });
-
-            toast.success(`Importadas ${response.count} contraseñas`, { id: toastId });
-
-            // Refresh list to get IDs
+            const response = await api.post('/vault/import', { items: payload });
             await refreshVault();
+            await fetchAuditLogs();
             trackCreate();
-
-        } catch (err) {
-            console.error("Bulk Import Failed", err);
-            toast.error("Error al importar. Revisa el formato.", { id: toastId });
-        }
-    };
-
-    const addPassword = async (newPassword) => {
-        try {
-            const encrypted = CryptoJS.AES.encrypt(newPassword.password, ENCRYPTION_KEY).toString();
-
-            // Encrypt custom fields
-            const encryptedCustomFields = newPassword.custom_fields ? newPassword.custom_fields.map(f => ({
-                ...f,
-                value: CryptoJS.AES.encrypt(f.value, ENCRYPTION_KEY).toString()
-            })) : [];
-
-            const payload = {
-                title: newPassword.title,
-                username: newPassword.username,
-                encrypted_password: encrypted,
-                url: newPassword.website || newPassword.url,
-                meta_person: newPassword.notes,
-                is_favorite: newPassword.isFavorite || false,
-                tags: newPassword.tags || [],
-                custom_fields: JSON.stringify(encryptedCustomFields)
-            };
-
-            const savedItem = await api.post('/vault', payload);
-            setPasswords(prev => {
-                const newState = [{ ...savedItem, password: newPassword.password, custom_fields: newPassword.custom_fields }, ...prev];
-                syncToLocal(newState);
-                return newState;
-            });
-            trackCreate();
-            toast.success('Contraseña guardada');
-        } catch (err) {
-            console.error("API Add failed", err);
-            toast.error('Error al guardar. Verifica tu conexión.');
+            toast.success(`Importadas ${response?.count || payload.length} contrasenas`, { id: toastId });
+            return { success: true };
+        } catch (error) {
+            console.error('Bulk import failed', error);
+            toast.error(error.message || 'Error al importar el archivo', { id: toastId });
+            return { success: false, error: error.message };
         }
     };
 
     const updatePassword = async (id, updates) => {
+        const current = passwords.find((item) => item.id === id);
+        if (!current) {
+            return { success: false, error: 'Contrasena no encontrada' };
+        }
+
+        const merged = {
+            ...current,
+            ...updates,
+            custom_fields: updates.custom_fields ?? updates.customFields ?? current.custom_fields,
+            folderId: updates.folderId ?? updates.folder_id ?? current.folderId,
+            isFavorite: updates.isFavorite ?? updates.is_favorite ?? current.isFavorite,
+            meta_person: updates.meta_person ?? updates.owner ?? updates.notes ?? current.meta_person,
+            password: updates.password ?? current.password,
+            tags: updates.tags ?? current.tags,
+        };
+
+        const newAttachments = Array.isArray(updates.attachmentsToAdd) ? updates.attachmentsToAdd : [];
+        const attachmentDeleteIds = Array.isArray(updates.attachmentsToDelete) ? updates.attachmentsToDelete : [];
+        const totalAttachments = (updates.existingAttachmentsCount ?? 0) - attachmentDeleteIds.length + newAttachments.length;
+
+        if (totalAttachments > MAX_ATTACHMENTS_PER_ITEM) {
+            return { success: false, error: `Maximo ${MAX_ATTACHMENTS_PER_ITEM} adjuntos por contrasena` };
+        }
+
         try {
-            const current = passwords.find(p => p.id === id);
-            if (!current) return;
+            await api.put(`/vault/${id}`, buildPasswordPayload(merged));
+            const attachmentResult = await processAttachmentChanges(id, {
+                attachmentsToAdd: newAttachments,
+                attachmentsToDelete: attachmentDeleteIds,
+            });
 
-            const merged = { ...current, ...updates };
-            const passwordToEncrypt = updates.password !== undefined ? updates.password : current.password;
+            await refreshVault();
+            await fetchAuditLogs();
 
-            const encrypted = CryptoJS.AES.encrypt(passwordToEncrypt, ENCRYPTION_KEY).toString();
-
-            // Encrypt custom fields if updated
-            let processedCustomFields = current.custom_fields; // Default to existing
-            if (updates.custom_fields) {
-                processedCustomFields = updates.custom_fields.map(f => ({
-                    ...f,
-                    value: CryptoJS.AES.encrypt(f.value, ENCRYPTION_KEY).toString()
-                }));
-            } else if (current.custom_fields) {
-                // If not updating custom fields but they exist, we must re-encrypt/preserve? 
-                // Wait, if we send stored encrypted payload back to server it's fine.
-                // But here we need to know if we are sending raw or encrypted.
-                // API expects custom_fields.
-                // If we don't send custom_fields in payload, backend might keep old? 
-                // My backend UPDATE query SETS tags checks if provided.
-                // But my backend code: `const { ... custom_fields } = req.body`.
-                // If I send undefined, `custom_fields` will be NULL/Undefined in SQL?
-                // `custom_fields = $8`. If undefined, it sets NULL.
-                // So I MUST send the existing ones if not updated.
-                // But `current.custom_fields` in state is DECRYPTED.
-                // So I must RE-ENCRYPT them if I send them back.
-                processedCustomFields = current.custom_fields.map(f => ({
-                    ...f,
-                    value: CryptoJS.AES.encrypt(f.value, ENCRYPTION_KEY).toString()
-                }));
+            if (attachmentResult.failures.length > 0) {
+                toast.success('Contrasena actualizada');
+                toast.error(`Algunos adjuntos no se procesaron: ${summarizeAttachmentFailures(attachmentResult.failures)}`);
+            } else {
+                toast.success('Contrasena actualizada');
             }
 
-            const payload = {
-                title: merged.title,
-                username: merged.username,
-                encrypted_password: encrypted,
-                url: merged.url,
-                meta_person: merged.meta_person,
-                is_favorite: merged.isFavorite,
-                tags: merged.tags,
-                custom_fields: JSON.stringify(processedCustomFields)
+            return {
+                success: true,
+                partial: attachmentResult.failures.length > 0,
+                attachmentFailures: attachmentResult.failures,
             };
-
-            await api.put(`/vault/${id}`, payload);
-
-            setPasswords(prev => {
-                const newState = prev.map(p => p.id === id ? { ...merged, password: passwordToEncrypt, custom_fields: updates.custom_fields || current.custom_fields } : p);
-                syncToLocal(newState);
-                return newState;
-            });
-            toast.success('Contraseña actualizada');
-        } catch (err) {
-            console.error("API Update failed", err);
-            toast.error('Error al actualizar');
+        } catch (error) {
+            console.error('Error updating password', error);
+            toast.error(error.message || 'No se pudo actualizar la contrasena');
+            return { success: false, error: error.message };
         }
+    };
+
+    const duplicatePassword = async (id, options = {}) => {
+        try {
+            const response = await api.post(`/vault/${id}/duplicate`, options.title ? { title: options.title } : {});
+            await refreshVault();
+            await fetchAuditLogs();
+            toast.success('Contrasena duplicada');
+            return { success: true, item: hydratePassword(response) };
+        } catch (error) {
+            console.error('Error duplicating password', error);
+            toast.error(error.message || 'No se pudo duplicar la contrasena');
+            return { success: false, error: error.message };
+        }
+    };
+
+    const checkoutPassword = async (id, payload = {}) => {
+        try {
+            const response = await api.post(`/vault/${id}/checkout`, payload);
+            await refreshVault();
+            await fetchAuditLogs();
+            toast.success('Credencial reservada');
+            return { success: true, item: hydratePassword(response) };
+        } catch (error) {
+            console.error('Error checking out password', error);
+            toast.error(error.message || 'No se pudo reservar la credencial');
+            return { success: false, error: error.message };
+        }
+    };
+
+    const checkinPassword = async (id) => {
+        try {
+            const response = await api.post(`/vault/${id}/checkin`, {});
+            await refreshVault();
+            await fetchAuditLogs();
+            toast.success('Credencial liberada');
+            return { success: true, item: hydratePassword(response) };
+        } catch (error) {
+            console.error('Error checking in password', error);
+            toast.error(error.message || 'No se pudo liberar la credencial');
+            return { success: false, error: error.message };
+        }
+    };
+
+    const getLinkedDevices = async (passwordId) => {
+        try {
+            const data = await api.get(`/vault/${passwordId}/linked-devices`);
+            return Array.isArray(data) ? data : [];
+        } catch (error) {
+            console.error('Error loading linked devices', error);
+            throw error;
+        }
+    };
+
+    const linkDeviceToPassword = async (passwordId, deviceId) => {
+        try {
+            const response = await api.post(`/vault/${passwordId}/linked-devices`, { device_id: deviceId });
+            toast.success('Dispositivo vinculado');
+            return { success: true, link: response };
+        } catch (error) {
+            console.error('Error linking device', error);
+            toast.error(error.message || 'No se pudo vincular el dispositivo');
+            return { success: false, error: error.message };
+        }
+    };
+
+    const unlinkDeviceFromPassword = async (passwordId, linkId) => {
+        try {
+            await api.delete(`/vault/${passwordId}/linked-devices/${linkId}`);
+            toast.success('Dispositivo desvinculado');
+            return { success: true };
+        } catch (error) {
+            console.error('Error unlinking device', error);
+            toast.error(error.message || 'No se pudo desvincular el dispositivo');
+            return { success: false, error: error.message };
+        }
+    };
+
+    const createTemplate = async (template) => {
+        try {
+            const response = await api.post('/templates', buildTemplatePayload(template));
+            const normalized = normalizeTemplate(response);
+            setTemplates((previous) => [normalized, ...previous]);
+            toast.success('Plantilla guardada');
+            return { success: true, template: normalized };
+        } catch (error) {
+            console.error('Error creating template', error);
+            toast.error(error.message || 'No se pudo guardar la plantilla');
+            return { success: false, error: error.message };
+        }
+    };
+
+    const deleteTemplate = async (id) => {
+        try {
+            await api.delete(`/templates/${id}`);
+            setTemplates((previous) => previous.filter((template) => template.id !== id));
+            toast.success('Plantilla eliminada');
+            return { success: true };
+        } catch (error) {
+            console.error('Error deleting template', error);
+            toast.error(error.message || 'No se pudo eliminar la plantilla');
+            return { success: false, error: error.message };
+        }
+    };
+
+    const toggleFavorite = async (id) => {
+        const current = passwords.find((item) => item.id === id);
+        if (!current) {
+            return;
+        }
+
+        await updatePassword(id, { isFavorite: !current.isFavorite });
     };
 
     const deletePassword = async (id) => {
         try {
-            await api.delete(`/vault/${id}`); // Soft delete by default
-
-            setPasswords(prev => {
-                // Determine behavior: move to trash implies keeping it in state but marked isDeleted?
-                // Or remove from active list? 
-                // The API soft delete sets is_deleted=true. GET /vault filters out is_deleted=false usually?
-                // Let's check api.js: GET /vault usually returns active items. 
-                // But context often keeps all. 
-                // Let's mark it as deleted in local state.
-                const newState = prev.map(p => p.id === id ? { ...p, isDeleted: true, deletedAt: new Date().toISOString() } : p);
-                syncToLocal(newState);
-                return newState;
-            });
-
+            await api.delete(`/vault/${id}`);
+            await refreshVault();
             trackDelete();
-            toast.success('Contraseña movida a papelera');
-        } catch (err) {
-            console.error("API Delete failed", err);
-            toast.error('Error al eliminar');
+            toast.success('Contrasena movida a papelera');
+        } catch (error) {
+            console.error('Error deleting password', error);
+            toast.error(error.message || 'No se pudo eliminar la contrasena');
         }
     };
 
-    // Restore from Trash
     const restorePassword = async (id) => {
         try {
             await api.put(`/vault/${id}/restore`);
-
-            setPasswords(prev => {
-                const newState = prev.map(p => p.id === id ? { ...p, isDeleted: false, deletedAt: null } : p);
-                syncToLocal(newState);
-                return newState;
-            });
-            toast.success('Contraseña restaurada');
-        } catch (err) {
-            console.error("Restore failed", err);
-            toast.error('Error al restaurar');
+            await refreshVault();
+            toast.success('Contrasena restaurada');
+        } catch (error) {
+            console.error('Error restoring password', error);
+            toast.error(error.message || 'No se pudo restaurar la contrasena');
         }
     };
 
     const permanentlyDeletePassword = async (id) => {
         try {
             await api.delete(`/vault/${id}?force=true`);
-
-            setPasswords(prev => {
-                const newState = prev.filter(p => p.id !== id);
-                syncToLocal(newState);
-                return newState;
-            });
-            toast.success('Eliminado permanentemente');
-        } catch (err) {
-            console.error("Hard delete failed", err);
-            toast.error('Error al eliminar permanentemente');
+            await refreshVault();
+            toast.success('Contrasena eliminada definitivamente');
+        } catch (error) {
+            console.error('Error permanently deleting password', error);
+            toast.error(error.message || 'No se pudo eliminar la contrasena');
         }
     };
 
     const getPasswordHistory = async (id) => {
         try {
             const history = await api.get(`/vault/${id}/history`);
-            const decryptedHistory = history.map(item => {
-                try {
-                    const bytes = CryptoJS.AES.decrypt(item.encrypted_password, ENCRYPTION_KEY);
-                    const originalPassword = bytes.toString(CryptoJS.enc.Utf8);
-                    return { ...item, password: originalPassword };
-                } catch (e) {
-                    return { ...item, password: 'ERROR' };
-                }
-            });
-            return decryptedHistory;
-        } catch (err) {
-            console.error("Fetch history failed", err);
+            return (Array.isArray(history) ? history : []).map((item) => ({
+                ...item,
+                changedAt: item.changedAt ?? item.changed_at,
+                changed_at: item.changedAt ?? item.changed_at,
+                password: decryptValue(item.encrypted_password),
+            }));
+        } catch (error) {
+            console.error('Error loading password history', error);
+            toast.error(error.message || 'No se pudo cargar el historial');
             return [];
         }
     };
 
-    // Shared Passwords Logic
-    const getSharedPasswords = () => {
-        return passwords.filter(p => p.permission).map(p => ({
-            ...p,
-            share: {
-                id: p.share_id,
-                permission: p.permission,
-                expiresAt: p.expires_at,
-                sharedBy: p.shared_by
-            }
-        }));
+    const getPasswordChangeLog = async (id) => {
+        try {
+            const history = await api.get(`/vault/${id}/change-log`);
+            return Array.isArray(history) ? history : [];
+        } catch (error) {
+            console.error('Error loading password change log', error);
+            toast.error(error.message || 'No se pudo cargar el historial de cambios');
+            return [];
+        }
     };
 
-    const updateShareAccess = async (shareId) => {
-        // Stub: In future, this could call an endpoint to log access
-        console.log("Share accessed:", shareId);
+    const getExportablePasswords = async () => {
+        const data = await api.get('/vault/export');
+        return (Array.isArray(data) ? data : []).map((item) => {
+            const hydrated = hydratePassword(item);
+            const attachments = (Array.isArray(item.attachments) ? item.attachments : [])
+                .map(normalizePasswordAttachment)
+                .filter(Boolean);
+
+            return {
+                ...hydrated,
+                attachments,
+            };
+        });
     };
 
-    // Shared Passwords Logic
-    // Local helper to sync shares into the password object state if needed, 
-    // but typically we fetch shares on demand for the modal.
+    const getSharedPasswords = useCallback(() =>
+        passwords.filter((item) => item.permission).map((item) => ({
+            ...item,
+            share: item.share || {
+                id: item.shareId,
+                permission: item.permission,
+                expiresAt: item.expiresAt,
+                sharedBy: item.sharedBy,
+            },
+        })), [passwords]);
 
-    // However, the `PasswordTable` or `Card` might show a badge.
-    // `getPasswordShares` was used synchronously in the modal.
-    // If we make it async, we need to update the Modal to handle async.
-    // The current Modal code: `const currentShares = getPasswordShares(passwordItem.id);`
-    // This implies `getPasswordShares` returns from local state.
-    // So we need to Fetch shares and store them in the `passwords` state?
-    // Or change `PasswordProvider` to load shares?
-
-    // Easier: Make `getPasswordShares` just return what's in state,
-    // and validly load them when `refreshVault` happens?
-    // `refreshVault` only queries `vault_items`.
-    // It does NOT join `shares`.
-
-    // Strategy: 
-    // 1. Add `shares` array to each password item in `refreshVault` if possible?
-    //    - That would require modifying `vault.js` GET / route to JSON agg shares.
-    // 2. OR, Keep `getPasswordShares` as a function that filters a global `allShares` state?
-    // 3. OR, Change Modal to use `useEffect` to fetch shares.
-
-    // Given the constraints and the Modal code:
-    // `const currentShares = getPasswordShares(passwordItem.id);`
-    // This relies on synchronous return.
-    // I should fetch all shares for the user in `refreshVault`?
-    // `GET /shares/internal/all` ? 
-
-    // Let's modify `refreshVault` to also fetch shares if we want to support this sync sync API.
-    // OR, we update the Modal. Updating the Modal is cleaner but requires editing another file.
-    // Updating `PasswordContext` to fetch all shares (outgoing) is also viable.
-
-    // Let's implement `sharePassword` and `revokeShare` first (Async).
+    const updateShareAccess = useCallback(async () => null, []);
 
     const sharePassword = async (passwordId, targetId, permission, expiresIn) => {
         try {
             await api.post('/shares/internal', { passwordId, targetId, permission, expiresIn });
-            // Refresh shares locally
             await refreshShares();
+            await refreshVault();
             return { success: true };
-        } catch (err) {
-            console.error(err);
-            toast.error("Error al compartir");
-            return { success: false };
+        } catch (error) {
+            console.error('Error sharing password', error);
+            toast.error(error.message || 'No se pudo compartir la contrasena');
+            return { success: false, error: error.message };
         }
     };
 
@@ -364,157 +609,122 @@ export const PasswordProvider = ({ children }) => {
         try {
             await api.delete(`/shares/internal/${shareId}`);
             await refreshShares();
-            toast.success("Acceso revocado");
-        } catch (err) {
-            console.error(err);
-            toast.error("Error al revocar");
+            await refreshVault();
+            toast.success('Acceso revocado');
+        } catch (error) {
+            console.error('Error revoking share', error);
+            toast.error(error.message || 'No se pudo revocar el acceso');
         }
     };
 
-    // New state for shares
-    const [shares, setShares] = useState([]);
+    const getPasswordShares = (passwordId) =>
+        shares.filter((share) => share.passwordId === passwordId);
 
-    const refreshShares = async () => {
-        if (!user) return;
-        try {
-            // We need a route to get ALL shares I have given?
-            // Or just fetch for specific item?
-            // If the Modal uses `getPasswordShares(id)`, it expects an array.
-            // If I implement `getPasswordShares` to filter from a global `shares` list,
-            // I need `GET /shares/internal/outgoing`
-
-            // Since I didn't verify `GET /shares/internal/outgoing` existing,
-            // I'll assume I need to add it or use the item-specific one.
-            // But valid `getPasswordShares` is synchronous.
-            // I will stick to: Fetch ALL my shares.
-            const res = await api.get('/shares/internal/outgoing'); // I need to add this route!
-            setShares(res);
-        } catch (err) {
-            // console.error(err); 
-            // If route missing, fail silently or empty
-        }
-    };
-
-    const getPasswordShares = (passwordId) => {
-        return shares.filter(s => s.password_id === passwordId).map(s => ({
-            id: s.id,
-            sharedWith: s.shared_with,
-            permission: s.permission,
-            expiresAt: s.expires_at,
-            // Name? The modal needs name.
-            // My route `GET /internal/item/:id` returned name.
-            // My `GET /internal/outgoing` should also return name.
-            name: s.name // Assuming the fetch populates this
-        }));
-    };
-
-    // Check single password against HIBP (k-Anonymity)
     const checkPasswordBreach = async (password) => {
         try {
-            if (!password) return 0;
-
-            // 1. Hash SHA-1
-            const sha1 = CryptoJS.SHA1(password).toString(CryptoJS.enc.Hex).toUpperCase();
-
-            // 2. Split Prefix (5 chars) and Suffix
-            const prefix = sha1.substring(0, 5);
-            const suffix = sha1.substring(5);
-
-            // 3. Fetch Range
-            const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
-            if (!response.ok) throw new Error('HIBP API Error');
-            const text = await response.text();
-
-            // 4. Parse Response to find suffix
-            const lines = text.split('\n');
-            const match = lines.find(line => line.startsWith(suffix));
-
-            if (match) {
-                // Format: SUFFIX:COUNT
-                return parseInt(match.split(':')[1], 10);
+            if (!password) {
+                return 0;
             }
-            return 0;
-        } catch (err) {
-            console.error("Breach check failed", err);
-            return -1; // Error code
+
+            const sha1 = CryptoJS.SHA1(password).toString(CryptoJS.enc.Hex).toUpperCase();
+            const prefix = sha1.slice(0, 5);
+            const suffix = sha1.slice(5);
+            const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
+
+            if (!response.ok) {
+                throw new Error('HIBP API Error');
+            }
+
+            const text = await response.text();
+            const match = text.split('\n').find((line) => line.startsWith(suffix));
+            return match ? Number.parseInt(match.split(':')[1], 10) : 0;
+        } catch (error) {
+            console.error('Error checking password breach', error);
+            return -1;
         }
     };
 
     const checkAllPasswordsForBreaches = async (onProgress) => {
-        let checked = 0;
-        const total = passwords.length;
-
-        // Create a map of updates
+        const activePasswords = passwords.filter((item) => !item.isDeleted);
         const updates = new Map();
 
-        for (const item of passwords) {
-            if (item.isDeleted) continue; // Skip deleted
-
+        for (const [index, item] of activePasswords.entries()) {
             const count = await checkPasswordBreach(item.password);
+            updates.set(item.id, count > 0 ? count : 0);
 
-            if (count > 0) {
-                updates.set(item.id, count);
-            }
-
-            checked++;
             if (onProgress) {
                 onProgress({
-                    current: checked,
-                    total: total,
-                    percentage: (checked / total) * 100
+                    current: index + 1,
+                    total: activePasswords.length,
+                    percentage: activePasswords.length > 0
+                        ? ((index + 1) / activePasswords.length) * 100
+                        : 100,
                 });
             }
 
-            // Tiny delay to be nice to API
-            await new Promise(r => setTimeout(r, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
         }
 
-        // Batch update state
-        if (updates.size > 0) {
-            setPasswords(prev => {
-                const newState = prev.map(p => {
-                    if (updates.has(p.id)) {
-                        return { ...p, breachCount: updates.get(p.id) };
-                    }
-                    return { ...p, breachCount: 0 }; // Clear previous breaches if safe now (unlikely for same pass but good logic)
-                });
-                syncToLocal(newState);
-                return newState;
-            });
-            toast.error(`¡Alerta! Se encontraron ${updates.size} contraseñas comprometidas.`, { duration: 5000, icon: '🚨' });
+        setPasswords((previous) =>
+            previous.map((item) => ({
+                ...item,
+                breachCount: updates.get(item.id) ?? 0,
+            }))
+        );
+
+        const compromised = [...updates.values()].filter((value) => value > 0).length;
+        if (compromised > 0) {
+            toast.error(`Se encontraron ${compromised} contrasenas comprometidas`, { duration: 5000 });
         } else {
-            toast.success('Análisis completado: No se encontraron filtraciones.', { duration: 5000, icon: '🛡️' });
+            toast.success('Analisis completado: no se encontraron filtraciones', { duration: 5000 });
         }
     };
 
     return (
-        <PasswordContext.Provider value={{
-            passwords,
-            addPassword,
-            bulkAddPasswords,
-            updatePassword,
-            deletePassword,
-            sharePassword,
-            getSharedPasswords,
-            updateShareAccess,
-            getPasswordShares,
-            revokeShare,
-            checkPasswordBreach,
-            checkAllPasswordsForBreaches,
-            restorePassword,
-            permanentlyDeletePassword,
-            getPasswordHistory,
-            auditLogs,
-            fetchAuditLogs: async () => {
-                try {
-                    const items = await api.get('/audit');
-                    setAuditLogs(items);
-                } catch (err) { console.error(err); }
-            },
-            filterTag,
-            setFilterTag
-        }}>
+        <PasswordContext.Provider
+            value={{
+                addPassword,
+                auditLogs,
+                bulkAddPasswords,
+                checkinPassword,
+                checkAllPasswordsForBreaches,
+                checkPasswordBreach,
+                checkPasswordForBreach: checkPasswordBreach,
+                checkoutPassword,
+                createTemplate,
+                deletePassword,
+                deletePasswordAttachment,
+                deleteTemplate,
+                duplicatePassword,
+                fetchAuditLogs,
+                filterTag,
+                getExportablePasswords,
+                getPasswordAttachments,
+                getPasswordChangeLog,
+                getPasswordHistory,
+                getPasswordShares,
+                getLinkedDevices,
+                getSharedPasswords,
+                linkDeviceToPassword,
+                passwords,
+                permanentlyDeletePassword,
+                refreshShares,
+                refreshTemplates,
+                refreshVault,
+                restorePassword,
+                revokeShare,
+                setFilterTag,
+                sharePassword,
+                shares,
+                templates,
+                toggleFavorite,
+                unlinkDeviceFromPassword,
+                updatePassword,
+                updateShareAccess,
+                uploadPasswordAttachment,
+            }}
+        >
             {children}
         </PasswordContext.Provider>
     );
-};
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Search, X, Key, Globe, LayoutGrid, Check } from 'lucide-react';
 import { usePasswords } from '../../context/PasswordContext';
 
@@ -11,7 +11,7 @@ export default function LicensePickerModal({ isOpen, onClose, onSelect }) {
 
     // Filter logic
     const filteredItems = passwords.filter(item =>
-        !item.is_deleted &&
+        !item.isDeleted &&
         (item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.username?.toLowerCase().includes(searchQuery.toLowerCase()))
     );

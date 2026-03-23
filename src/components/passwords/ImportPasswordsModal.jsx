@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, UserCheck, ArrowRight } from 'lucide-react';
 import { usePasswords } from '../../context/PasswordContext';
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import { cn } from '../../lib/utils';
 
 export default function ImportPasswordsModal({ isOpen, onClose }) {
@@ -190,9 +189,6 @@ export default function ImportPasswordsModal({ isOpen, onClose }) {
                 let rawPersonName = lowerRow['propietario'] || lowerRow['usuariodepartamentoterminalserver'] || lowerRow['usuario'] || lowerRow['nombre'] || 'Usuario';
                 personName = cleanName(String(rawPersonName));
 
-                // Identification context (for resolution UI)
-                const context = lowerRow['email'] || lowerRow['usuariopc'] || row[Object.keys(row)[0]];
-
                 if (hasTerminal || hasFactusol || hasEmail) {
                     // ... Existing Logic for Wide Format ...
                     // 1. Terminal Server
@@ -343,15 +339,9 @@ export default function ImportPasswordsModal({ isOpen, onClose }) {
                         processData(results.data);
                     }
                 });
-            } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                const data = await file.arrayBuffer();
-                const workbook = XLSX.read(data);
-                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
-                processData(jsonData);
             } else {
                 setStatus('error');
-                setErrorMsg('Formato no soportado. Usa CSV o Excel (.xlsx).');
+                setErrorMsg('Formato no soportado. Usa un archivo CSV.');
             }
         } catch (e) {
             console.error(e);
@@ -434,7 +424,7 @@ export default function ImportPasswordsModal({ isOpen, onClose }) {
                                 ref={inputRef}
                                 type="file"
                                 className="hidden"
-                                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                                accept=".csv,text/csv"
                                 onChange={handleChange}
                             />
 
@@ -449,7 +439,7 @@ export default function ImportPasswordsModal({ isOpen, onClose }) {
                                     <Upload className="w-10 h-10 mb-2 text-slate-500" />
                                     <p className="font-medium text-white">Arrastra tu archivo aquí</p>
                                     <p className="text-sm">o haz clic para seleccionar</p>
-                                    <p className="text-xs mt-4 text-slate-500">Soporta CSV y Excel (.xlsx)</p>
+                                    <p className="text-xs mt-4 text-slate-500">Soporta archivos CSV</p>
                                 </div>
                             )}
                         </div>

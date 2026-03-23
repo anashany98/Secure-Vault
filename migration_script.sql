@@ -13,7 +13,7 @@ VALUES (
     'admin-001'::uuid,
     'admin@company.com',
     'Admin User',
-    '$2a$10$YourHashedPasswordHere', -- Reemplazar con hash real de 'admin123'
+    '$2a$10$YourHashedPasswordHere', -- Reemplazar con el hash real de la contrasena inicial segura
     'admin',
     CURRENT_TIMESTAMP
 )

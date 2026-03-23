@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Calendar, User, FileText, Wrench, Clock, ShieldCheck, Plus, Key, Trash2, ExternalLink, Globe } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { api } from '../../lib/api';
@@ -15,21 +15,28 @@ export default function DeviceDetailModal({ isOpen, onClose, device }) {
     const [licenses, setLicenses] = useState([]);
     const [isLicensePickerOpen, setIsLicensePickerOpen] = useState(false);
 
+    const fetchLicenses = useCallback(async () => {
+        if (!device?.id) {
+            setLicenses([]);
+            return [];
+        }
+
+        try {
+            const data = await api.get(`/inventory/${device.id}/licenses`);
+            setLicenses(data);
+            return data;
+        } catch (err) {
+            console.error("Failed to load licenses", err);
+            return [];
+        }
+    }, [device]);
+
     useEffect(() => {
         if (isOpen && device) {
             fetchLicenses();
             setActiveTab('details'); // Reset tab on open
         }
-    }, [isOpen, device]);
-
-    const fetchLicenses = async () => {
-        try {
-            const data = await api.get(`/inventory/${device.id}/licenses`);
-            setLicenses(data);
-        } catch (err) {
-            console.error("Failed to load licenses", err);
-        }
-    };
+    }, [device, fetchLicenses, isOpen]);
 
     const handleLinkLicense = async (vaultItemId) => {
         try {
@@ -56,7 +63,7 @@ export default function DeviceDetailModal({ isOpen, onClose, device }) {
             await api.del(`/inventory/${device.id}/licenses/${linkId}`);
             toast.success('Licencia desvinculada');
             fetchLicenses();
-        } catch (err) {
+        } catch (_err) {
             toast.error('Error al desvincular');
         }
     };
@@ -84,7 +91,9 @@ export default function DeviceDetailModal({ isOpen, onClose, device }) {
         }
     };
 
-    const sortedHistory = [...(device.history || [])].sort((a, b) => b.date - a.date);
+    const sortedHistory = [...(device.history || [])].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -152,6 +161,13 @@ export default function DeviceDetailModal({ isOpen, onClose, device }) {
                                                 <Calendar className="w-3.5 h-3.5" />
                                                 <span>{new Date(device.createdAt).toLocaleDateString()}</span>
                                             </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-500 block mb-1">Próxima revisión</label>
+                                        <div className="flex items-center gap-2 text-slate-300 text-sm">
+                                            <Calendar className="w-3.5 h-3.5" />
+                                            <span>{device.nextReviewAt ? new Date(device.nextReviewAt).toLocaleDateString() : 'Sin fecha'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -233,7 +249,7 @@ export default function DeviceDetailModal({ isOpen, onClose, device }) {
                             {licenses.length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {licenses.map(lic => (
-                                        <div key={lic.link_id} className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 flex items-start justify-between group hover:border-slate-600 transition-colors">
+                                        <div key={lic.linkId || lic.link_id} className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 flex items-start justify-between group hover:border-slate-600 transition-colors">
                                             <div className="flex items-start gap-3 overflow-hidden">
                                                 <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center shrink-0">
                                                     {lic.url ? <Globe className="w-5 h-5 text-blue-400" /> : <Key className="w-5 h-5 text-amber-400" />}
@@ -241,7 +257,7 @@ export default function DeviceDetailModal({ isOpen, onClose, device }) {
                                                 <div className="min-w-0">
                                                     <h4 className="font-bold text-white truncate">{lic.title}</h4>
                                                     <p className="text-sm text-slate-400 truncate">{lic.username}</p>
-                                                    <p className="text-xs text-slate-600 mt-1">Vinculado: {new Date(lic.assigned_at).toLocaleDateString()}</p>
+                                                    <p className="text-xs text-slate-600 mt-1">Vinculado: {new Date(lic.assignedAt || lic.assigned_at).toLocaleDateString()}</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -257,7 +273,7 @@ export default function DeviceDetailModal({ isOpen, onClose, device }) {
                                                     </a>
                                                 )}
                                                 <button
-                                                    onClick={() => handleUnlinkLicense(lic.link_id)}
+                                                    onClick={() => handleUnlinkLicense(lic.linkId || lic.link_id)}
                                                     className="p-2 text-slate-400 hover:text-red-400 transition-colors"
                                                     title="Desvincular"
                                                 >

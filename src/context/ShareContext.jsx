@@ -1,47 +1,48 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext } from 'react';
 import toast from 'react-hot-toast';
 
+import { api } from '../lib/api';
+import { getApiUrl } from '../lib/env';
+
 const ShareContext = createContext();
+const API_URL = getApiUrl();
 
-export const useShare = () => useContext(ShareContext);
+function getCookie(name) {
+    const prefix = `${name}=`;
+    return document.cookie
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(prefix))
+        ?.slice(prefix.length) || '';
+}
 
-const SHARES_KEY = 'vault_local_shares';
+export function useShare() {
+    return useContext(ShareContext);
+}
 
-export const ShareProvider = ({ children }) => {
-
-    // API URL helper
-    const API_URL = import.meta.env.VITE_API_URL || '/api';
-
+export function ShareProvider({ children }) {
     const generateShareLink = async (item, type = 'password', options = {}) => {
         try {
             const encryptedData = (() => {
                 if (type === 'password' && options.includeUsername === false) {
-                    const { username, ...rest } = item;
-                    return rest;
+                    const copy = { ...item };
+                    delete copy.username;
+                    return copy;
                 }
+
                 return item;
             })();
 
-            const res = await fetch(`${API_URL}/shares`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    encryptedData,
-                    type,
-                    settings: {
-                        expiration: options.expiration,
-                        views: options.views
-                    }
-                })
+            const { id } = await api.post('/shares', {
+                encryptedData,
+                type,
+                settings: {
+                    expiration: options.expiration,
+                    views: options.views,
+                },
             });
 
-            if (!res.ok) throw new Error('Error generando enlace');
-
-            const { id } = await res.json();
-
-            // Construct Link
-            const link = `${window.location.origin}/share/${id}`;
-            return link;
+            return `${window.location.origin}/share/${id}`;
         } catch (error) {
             console.error(error);
             toast.error('Error al crear el enlace compartido');
@@ -51,46 +52,50 @@ export const ShareProvider = ({ children }) => {
 
     const getShare = async (shareId) => {
         try {
-            const res = await fetch(`${API_URL}/shares/${shareId}`);
-            if (!res.ok) {
-                const err = await res.json();
-                return { error: err.error || 'Error al obtener el enlace' };
+            const response = await fetch(`${API_URL}/shares/${shareId}`);
+            if (!response.ok) {
+                const errorData = await response.json();
+                return { error: errorData.error || 'Error al obtener el enlace' };
             }
-            const data = await res.json();
-            return { data };
-        } catch (error) {
-            return { error: 'Error de conexión' };
+
+            return { data: await response.json() };
+        } catch {
+            return { error: 'Error de conexion' };
         }
     };
 
     const consumeShare = async (shareId) => {
         try {
-            const res = await fetch(`${API_URL}/shares/${shareId}/reveal`, {
-                method: 'POST'
+            const csrfToken = getCookie('securevault_csrf');
+            const response = await fetch(`${API_URL}/shares/${shareId}/reveal`, {
+                credentials: 'include',
+                headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+                method: 'POST',
             });
 
-            if (!res.ok) {
-                const err = await res.json();
-                toast.error(err.error || 'Error al revelar secreto');
+            if (!response.ok) {
+                const errorData = await response.json();
+                toast.error(errorData.error || 'Error al revelar secreto');
                 return null;
             }
 
-            const data = await res.json();
-            return data; // Returns { encryptedData, type }
+            return response.json();
         } catch (error) {
             console.error(error);
-            toast.error('Error de conexión');
+            toast.error('Error de conexion');
             return null;
         }
     };
 
     return (
-        <ShareContext.Provider value={{
-            generateShareLink,
-            getShare,
-            consumeShare
-        }}>
+        <ShareContext.Provider
+            value={{
+                consumeShare,
+                generateShareLink,
+                getShare,
+            }}
+        >
             {children}
         </ShareContext.Provider>
     );
-};
+}

@@ -16,6 +16,7 @@ export default function AddDeviceModal({ isOpen, onClose }) {
         serial: '',
         assignedTo: '',
         status: 'en_uso',
+        nextReviewAt: '',
         notes: ''
     });
 
@@ -73,6 +74,7 @@ export default function AddDeviceModal({ isOpen, onClose }) {
             serial: '',
             assignedTo: '',
             status: 'en_uso',
+            nextReviewAt: '',
             notes: ''
         });
     };
@@ -255,6 +257,16 @@ export default function AddDeviceModal({ isOpen, onClose }) {
                                     <option key={status.id} value={status.id}>{status.label}</option>
                                 ))}
                             </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Proxima revision</label>
+                            <input
+                                type="date"
+                                name="nextReviewAt"
+                                value={formData.nextReviewAt}
+                                onChange={handleChange}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            />
                         </div>
                     </div>
                 </form>

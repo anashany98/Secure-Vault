@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -8,12 +8,13 @@ import { PasswordProvider } from './context/PasswordContext';
 import { ViewProvider, useView } from './context/ViewContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { UsageProvider } from './context/UsageContext';
-import { FolderProvider } from './context/FolderContext';
 import { InventoryProvider } from './context/InventoryContext';
 import { NotesProvider } from './context/NotesContext';
 import { GroupProvider } from './context/GroupContext';
 import { ShareProvider } from './context/ShareContext';
 import { ConfigProvider } from './context/ConfigContext';
+import { AlertsProvider } from './context/AlertsContext';
+import { VaultSecurityProvider, useVaultSecurity } from './context/VaultSecurityContext';
 
 // Components
 import Sidebar from './components/layout/Sidebar';
@@ -26,7 +27,6 @@ import { useHotkeys } from 'react-hotkeys-hook';
 
 // Pages
 import LoginPage from './pages/Login';
-import RegisterPage from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import Settings from './pages/Settings';
@@ -39,9 +39,12 @@ import TrashPage from './pages/TrashPage';
 import GroupsPage from './pages/GroupsPage';
 import SharePage from './pages/SharePage';
 import Sessions from './pages/Sessions';
+import Inbox from './pages/Inbox';
+import VaultAccess from './pages/VaultAccess';
 
 function AppContent() {
   const { isAuthenticated } = useAuth();
+  const { isVaultReady } = useVaultSecurity();
   const { currentView } = useView();
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
@@ -58,12 +61,18 @@ function AppContent() {
     return <LoginPage />;
   }
 
+  if (!isVaultReady) {
+    return <VaultAccess />;
+  }
+
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
         return <Dashboard />;
       case 'inventory':
         return <Inventory />;
+      case 'inbox':
+        return <Inbox />;
       case 'settings':
         return <Settings />;
       case 'shared':
@@ -111,7 +120,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
-      <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/" />} />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
       <Route path="/share/:id" element={<SharePage />} />
       <Route
         path="/*"
@@ -125,48 +134,50 @@ function App() {
   return (
     <UsageProvider>
       <AuthProvider>
-        <ThemeProvider>
-          <ViewProvider>
-            <FolderProvider>
+        <VaultSecurityProvider>
+          <ThemeProvider>
+            <ViewProvider>
               <InventoryProvider>
                 <PasswordProvider>
                   <GroupProvider>
                     <NotesProvider>
                       <ShareProvider>
                         <ConfigProvider>
-                          <Toaster
-                            position="top-right"
-                            toastOptions={{
-                              success: {
-                                duration: 3000,
-                                style: {
-                                  background: '#10b981',
-                                  color: '#fff',
+                          <AlertsProvider>
+                            <Toaster
+                              position="top-right"
+                              toastOptions={{
+                                success: {
+                                  duration: 3000,
+                                  style: {
+                                    background: '#10b981',
+                                    color: '#fff',
+                                  },
                                 },
-                              },
-                              error: {
-                                duration: 4000,
-                                style: {
-                                  background: '#ef4444',
-                                  color: '#fff',
+                                error: {
+                                  duration: 4000,
+                                  style: {
+                                    background: '#ef4444',
+                                    color: '#fff',
+                                  },
                                 },
-                              },
-                            }}
-                          />
-                          <BrowserRouter>
-                            <ErrorBoundary>
-                              <AppRoutes />
-                            </ErrorBoundary>
-                          </BrowserRouter>
+                              }}
+                            />
+                            <BrowserRouter>
+                              <ErrorBoundary>
+                                <AppRoutes />
+                              </ErrorBoundary>
+                            </BrowserRouter>
+                          </AlertsProvider>
                         </ConfigProvider>
                       </ShareProvider>
                     </NotesProvider>
                   </GroupProvider>
                 </PasswordProvider>
               </InventoryProvider>
-            </FolderProvider>
-          </ViewProvider>
-        </ThemeProvider>
+            </ViewProvider>
+          </ThemeProvider>
+        </VaultSecurityProvider>
       </AuthProvider>
     </UsageProvider>
   );

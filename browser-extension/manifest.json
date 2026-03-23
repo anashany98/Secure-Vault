@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "SecureVault Autofill",
+  "version": "0.1.0",
+  "description": "Sugiere credenciales de SecureVault segun la URL activa y rellena el login.",
+  "permissions": [
+    "activeTab",
+    "clipboardRead",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "action": {
+    "default_title": "SecureVault Autofill",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

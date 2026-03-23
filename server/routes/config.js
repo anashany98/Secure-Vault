@@ -1,29 +1,29 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db');
-const auth = require('../middleware/auth');
 
-// Get config
-router.get('/', auth, async (req, res) => {
+const pool = require('../db');
+const verifyToken = require('../middleware/auth');
+const requireAdmin = require('../middleware/admin');
+
+router.use(verifyToken, requireAdmin);
+
+router.get('/', async (req, res) => {
     try {
         const result = await pool.query('SELECT key, value FROM app_config');
-        // Convert array to object { company_name: "Value" }
-        const config = result.rows.reduce((acc, row) => {
-            acc[row.key] = row.value;
-            return acc;
+        const config = result.rows.reduce((accumulator, row) => {
+            accumulator[row.key] = row.value;
+            return accumulator;
         }, {});
-        res.json(config);
+        return res.json(config);
     } catch (err) {
         console.error(err.message);
-        res.status(500).send('Server Error');
+        return res.status(500).send('Server Error');
     }
 });
 
-// Update config
-router.post('/', auth, async (req, res) => {
+router.post('/', async (req, res) => {
     try {
         const { company_name } = req.body;
-
         if (company_name) {
             await pool.query(
                 `INSERT INTO app_config (key, value)
@@ -34,10 +34,10 @@ router.post('/', auth, async (req, res) => {
             );
         }
 
-        res.json({ success: true, message: 'Config updated' });
+        return res.json({ success: true, message: 'Config updated' });
     } catch (err) {
         console.error(err.message);
-        res.status(500).send('Server Error');
+        return res.status(500).send('Server Error');
     }
 });
 

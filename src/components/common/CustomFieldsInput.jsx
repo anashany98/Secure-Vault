@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Plus, Trash2, AlignLeft } from 'lucide-react';
 
 export default function CustomFieldsInput({ fields = [], onChange }) {

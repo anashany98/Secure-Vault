@@ -7,7 +7,7 @@ class ErrorBoundary extends React.Component {
         this.state = { hasError: false, error: null, errorInfo: null };
     }
 
-    static getDerivedStateFromError(error) {
+    static getDerivedStateFromError(_error) {
         return { hasError: true };
     }
 
@@ -32,7 +32,7 @@ class ErrorBoundary extends React.Component {
                             Ha ocurrido un error inesperado en la aplicación.
                         </p>
 
-                        {process.env.NODE_ENV === 'development' && this.state.error && (
+                        {import.meta.env.DEV && this.state.error && (
                             <div className="bg-slate-950 p-4 rounded-lg text-left mb-6 overflow-auto max-h-40 text-xs text-red-300 font-mono border border-red-500/20">
                                 {this.state.error.toString()}
                             </div>

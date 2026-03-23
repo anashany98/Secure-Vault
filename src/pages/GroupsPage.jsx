@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 
 const GroupsPage = () => {
     const { groups, createGroup, deleteGroup, addMember, removeMember, getGroupMembers } = useGroups();
-    const { usersList, user: currentUser } = useAuth();
+    const { usersList } = useAuth();
     const [selectedGroup, setSelectedGroup] = useState(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [newGroupName, setNewGroupName] = useState('');

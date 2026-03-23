@@ -1,56 +1,82 @@
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, Trash2, ExternalLink, Shield, AlertTriangle, Edit, Share2, Clock, Star } from 'lucide-react';
+import {
+    AlertTriangle,
+    Clock,
+    Copy,
+    Edit,
+    Eye,
+    EyeOff,
+    ExternalLink,
+    Files,
+    Share2,
+    Shield,
+    Star,
+    Trash2,
+} from 'lucide-react';
+
 import { usePasswords } from '../../context/PasswordContext';
-import { calculateCrackTime, getSecurityEmoji } from '../../lib/passwordSecurity';
+import { calculateCrackTime } from '../../lib/passwordSecurity';
 import { cn } from '../../lib/utils';
 import EditPasswordModal from './EditPasswordModal';
-import SharePasswordModal from './SharePasswordModal';
 import PasswordHistoryModal from './PasswordHistoryModal';
+import SharePasswordModal from './SharePasswordModal';
 
-export default function PasswordTable({ items }) {
-    const { deletePassword, toggleFavorite } = usePasswords();
+function isReviewDue(item) {
+    if (!item.nextReviewAt) {
+        return false;
+    }
+
+    const timestamp = new Date(item.nextReviewAt).getTime();
+    return !Number.isNaN(timestamp) && timestamp <= Date.now() + 7 * 24 * 60 * 60 * 1000;
+}
+
+export default function PasswordTable({ items, onEdit, onShare }) {
+    const { deletePassword, duplicatePassword, toggleFavorite } = usePasswords();
     const [visiblePasswords, setVisiblePasswords] = useState({});
     const [editingItem, setEditingItem] = useState(null);
     const [sharingItem, setSharingItem] = useState(null);
     const [historyItem, setHistoryItem] = useState(null);
 
+    const stop = (handler) => (event) => {
+        event.stopPropagation();
+        handler();
+    };
+
     const togglePassword = (id) => {
-        setVisiblePasswords(prev => ({
-            ...prev,
-            [id]: !prev[id]
+        setVisiblePasswords((previous) => ({
+            ...previous,
+            [id]: !previous[id],
         }));
     };
 
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text);
-        // Could add toast notification here
-    };
-
-    const handleDelete = (id) => {
-        if (window.confirm('¿Estás seguro de que quieres eliminar esta contraseña?')) {
-            deletePassword(id);
-        }
     };
 
     return (
-        <div className="overflow-x-auto bg-surface border border-slate-700 rounded-xl">
-            <table className="w-full text-left border-collapse">
+        <div className="overflow-x-auto rounded-xl border border-slate-700 bg-surface">
+            <table className="w-full border-collapse text-left">
                 <thead>
                     <tr className="border-b border-slate-700 bg-slate-900/50">
-                        <th className="p-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Servicio</th>
-                        <th className="p-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Usuario</th>
-                        <th className="p-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Contraseña</th>
-                        <th className="p-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Seguridad</th>
-                        <th className="p-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Propietario</th>
-                        <th className="p-4 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Acciones</th>
+                        <th className="p-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Servicio</th>
+                        <th className="p-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Usuario</th>
+                        <th className="p-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Contrasena</th>
+                        <th className="p-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Estado</th>
+                        <th className="p-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Propietario</th>
+                        <th className="p-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Acciones</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
                     {items.map((item) => (
-                        <tr key={item.id} data-testid={`password-row-${item.id}`} className="hover:bg-slate-800/30 transition-colors group">
+                        <tr
+                            key={item.id}
+                            data-testid={`password-row-${item.id}`}
+                            onClick={() => onEdit?.(item)}
+                            className="group cursor-pointer transition-colors hover:bg-slate-800/30"
+                        >
                             <td className="p-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center text-white font-bold border border-white/10">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 font-bold text-white">
                                         {item.title.charAt(0).toUpperCase()}
                                     </div>
                                     <div>
@@ -60,9 +86,10 @@ export default function PasswordTable({ items }) {
                                                 href={item.url.startsWith('http') ? item.url : `https://${item.url}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-xs text-primary hover:text-emerald-400 flex items-center gap-1 mt-0.5"
+                                                onClick={(event) => event.stopPropagation()}
+                                                className="mt-0.5 flex items-center gap-1 text-xs text-primary hover:text-emerald-400"
                                             >
-                                                Visitar <ExternalLink className="w-3 h-3" />
+                                                Visitar <ExternalLink className="h-3 w-3" />
                                             </a>
                                         )}
                                     </div>
@@ -70,112 +97,137 @@ export default function PasswordTable({ items }) {
                             </td>
                             <td className="p-4">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-slate-300 font-mono text-sm">{item.username}</span>
+                                    <span className="font-mono text-sm text-slate-300">{item.username}</span>
                                     <button
-                                        onClick={() => copyToClipboard(item.username)}
-                                        className="p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-all"
+                                        onClick={stop(() => copyToClipboard(item.username))}
+                                        className="rounded-lg p-1.5 text-slate-500 opacity-0 transition-all hover:bg-slate-700 hover:text-white group-hover:opacity-100"
                                         title="Copiar usuario"
                                     >
-                                        <Copy className="w-3.5 h-3.5" />
+                                        <Copy className="h-3.5 w-3.5" />
                                     </button>
                                 </div>
                             </td>
                             <td className="p-4">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-slate-300 font-mono text-sm min-w-[8ch]">
+                                    <span className="min-w-[8ch] font-mono text-sm text-slate-300">
                                         {visiblePasswords[item.id] ? item.password : '••••••••'}
                                     </span>
-                                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-all">
+                                    <div className="flex items-center opacity-0 transition-all group-hover:opacity-100">
                                         <button
-                                            onClick={() => togglePassword(item.id)}
-                                            className="p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-slate-700"
-                                            title={visiblePasswords[item.id] ? "Ocultar" : "Mostrar"}
+                                            onClick={stop(() => togglePassword(item.id))}
+                                            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-700 hover:text-white"
+                                            title={visiblePasswords[item.id] ? 'Ocultar' : 'Mostrar'}
                                         >
-                                            {visiblePasswords[item.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                            {visiblePasswords[item.id] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                         </button>
                                         <button
-                                            onClick={() => copyToClipboard(item.password)}
-                                            className="p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-slate-700 ml-1"
-                                            title="Copiar contraseña"
+                                            onClick={stop(() => copyToClipboard(item.password))}
+                                            className="ml-1 rounded-lg p-1.5 text-slate-500 hover:bg-slate-700 hover:text-white"
+                                            title="Copiar contrasena"
                                         >
-                                            <Copy className="w-3.5 h-3.5" />
+                                            <Copy className="h-3.5 w-3.5" />
                                         </button>
                                     </div>
                                 </div>
                             </td>
                             <td className="p-4">
-                                {(() => {
-                                    const security = calculateCrackTime(item.password);
-                                    if (item.breachCount > 0) {
-                                        return (
-                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/50 animate-pulse" title={`Aparece en ${item.breachCount} filtraciones`}>
-                                                <AlertTriangle className="w-3 h-3" />
-                                                <span>COMPROMETIDA</span>
-                                            </div>
-                                        );
-                                    }
-                                    return (
-                                        <div className={cn(
-                                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border",
-                                            security.bgColor,
-                                            security.borderColor
-                                        )}>
-                                            <Shield className={cn("w-3 h-3", security.color)} />
-                                            <span className={security.color}>{security.time}</span>
+                                <div className="flex flex-wrap gap-2">
+                                    {item.breachCount > 0 ? (
+                                        <div className="inline-flex items-center gap-1.5 rounded-full border border-red-500/50 bg-red-500/10 px-2.5 py-1 text-xs font-bold text-red-500">
+                                            <AlertTriangle className="h-3 w-3" />
+                                            <span>COMPROMETIDA</span>
                                         </div>
-                                    );
-                                })()}
+                                    ) : (
+                                        <div className={cn(
+                                            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
+                                            calculateCrackTime(item.password).bgColor,
+                                            calculateCrackTime(item.password).borderColor
+                                        )}>
+                                            <Shield className={cn('h-3 w-3', calculateCrackTime(item.password).color)} />
+                                            <span className={calculateCrackTime(item.password).color}>
+                                                {calculateCrackTime(item.password).time}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {item.checkedOutBy && (
+                                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-400">
+                                            <Clock className="h-3 w-3" />
+                                            Checkout
+                                        </span>
+                                    )}
+                                    {isReviewDue(item) && (
+                                        <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
+                                            <AlertTriangle className="h-3 w-3" />
+                                            Revision
+                                        </span>
+                                    )}
+                                </div>
                             </td>
                             <td className="p-4">
                                 {item.meta_person ? (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                                    <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs font-medium text-slate-300">
                                         {item.meta_person}
                                     </span>
                                 ) : (
-                                    <span className="text-slate-600 text-xs italic">N/A</span>
+                                    <span className="text-xs italic text-slate-600">N/A</span>
                                 )}
                             </td>
                             <td className="p-4 text-right">
                                 <div className="flex items-center justify-end gap-1">
                                     <button
-                                        onClick={() => toggleFavorite(item.id)}
+                                        onClick={stop(() => toggleFavorite(item.id))}
                                         className={cn(
-                                            "p-2 rounded-lg transition-colors",
-                                            item.isFavorite ? "text-warning hover:bg-warning/10" : "text-slate-400 hover:text-warning hover:bg-warning/10"
+                                            'rounded-lg p-2 transition-colors',
+                                            item.isFavorite
+                                                ? 'text-warning hover:bg-warning/10'
+                                                : 'text-slate-400 hover:bg-warning/10 hover:text-warning'
                                         )}
                                         title="Favorito"
                                     >
-                                        <Star className={cn("w-4 h-4", item.isFavorite && "fill-current")} />
+                                        <Star className={cn('h-4 w-4', item.isFavorite && 'fill-current')} />
                                     </button>
                                     <button
-                                        onClick={() => setHistoryItem(item)}
-                                        className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"
+                                        onClick={stop(() => duplicatePassword(item.id))}
+                                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+                                        title="Duplicar"
+                                    >
+                                        <Files className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        onClick={stop(() => setHistoryItem(item))}
+                                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-blue-400/10 hover:text-blue-400"
                                         title="Historial"
                                     >
-                                        <Clock className="w-4 h-4" />
+                                        <Clock className="h-4 w-4" />
                                     </button>
                                     <button
                                         data-testid={`password-table-share-${item.id}`}
-                                        onClick={() => setSharingItem(item)}
-                                        className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                                        onClick={stop(() => {
+                                            if (onShare) {
+                                                onShare(item);
+                                                return;
+                                            }
+                                            setSharingItem(item);
+                                        })}
+                                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary"
                                         title="Compartir"
                                     >
-                                        <Share2 className="w-4 h-4" />
+                                        <Share2 className="h-4 w-4" />
                                     </button>
                                     <button
-                                        onClick={() => setEditingItem(item)}
-                                        className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                                        onClick={stop(() => setEditingItem(item))}
+                                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary"
                                         title="Editar"
                                     >
-                                        <Edit className="w-4 h-4" />
+                                        <Edit className="h-4 w-4" />
                                     </button>
                                     <button
                                         data-testid={`password-table-delete-${item.id}`}
-                                        onClick={() => handleDelete(item.id)}
-                                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                                        onClick={stop(() => deletePassword(item.id))}
+                                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-400/10 hover:text-red-400"
                                         title="Eliminar"
                                     >
-                                        <Trash2 className="w-4 h-4" />
+                                        <Trash2 className="h-4 w-4" />
                                     </button>
                                 </div>
                             </td>
@@ -191,7 +243,6 @@ export default function PasswordTable({ items }) {
                     password={editingItem}
                 />
             )}
-
             {sharingItem && (
                 <SharePasswordModal
                     isOpen={!!sharingItem}
@@ -199,7 +250,6 @@ export default function PasswordTable({ items }) {
                     passwordItem={sharingItem}
                 />
             )}
-
             {historyItem && (
                 <PasswordHistoryModal
                     isOpen={!!historyItem}

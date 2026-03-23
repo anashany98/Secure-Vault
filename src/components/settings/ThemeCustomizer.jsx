@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useTheme } from '../../context/ThemeContext';
 import { Palette, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -13,7 +12,6 @@ const THEME_PRESETS = [
 ];
 
 export default function ThemeCustomizer() {
-    const { theme } = useTheme();
     const [customColors, setCustomColors] = useState(() => {
         const saved = localStorage.getItem('custom_theme_colors');
         if (saved) {

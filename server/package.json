@@ -4,12 +4,14 @@
     "description": "Backend API for Secure Vault",
     "main": "index.js",
     "scripts": {
+        "backup": "node scripts/create_backup.js",
+        "restore-backup": "node scripts/restore_backup.js",
         "start": "node index.js",
         "dev": "nodemon index.js",
         "test": "vitest"
     },
     "dependencies": {
-        "bcrypt": "^5.1.1",
+        "bcrypt": "^6.0.0",
         "better-sqlite3": "^12.6.2",
         "cors": "^2.8.5",
         "dotenv": "^16.4.5",

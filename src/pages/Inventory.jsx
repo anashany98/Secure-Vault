@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Package, Plus, Search, Monitor, Smartphone, AlertCircle } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { Package, Plus, Search, Monitor, Smartphone, AlertCircle, Clock } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import InventoryItem from '../components/inventory/InventoryItem';
 import AddDeviceModal from '../components/inventory/AddDeviceModal';
@@ -9,7 +8,6 @@ import DeviceDetailModal from '../components/inventory/DeviceDetailModal';
 import DeviceQRModal from '../components/inventory/DeviceQRModal';
 
 export default function Inventory() {
-    const { user } = useAuth();
     const { items } = useInventory();
     const [isModaAddOpen, setIsModalAddOpen] = useState(false);
     const [selectedDevice, setSelectedDevice] = useState(null);
@@ -28,6 +26,14 @@ export default function Inventory() {
     const computers = items.filter(i => i.type === 'ordenador').length;
     const mobiles = items.filter(i => i.type === 'movil').length;
     const inRepair = items.filter(i => i.status === 'reparacion').length;
+    const reviewDue = items.filter((item) => {
+        if (!item.nextReviewAt) {
+            return false;
+        }
+
+        const timestamp = new Date(item.nextReviewAt).getTime();
+        return !Number.isNaN(timestamp) && timestamp <= Date.now() + 7 * 24 * 60 * 60 * 1000;
+    }).length;
 
     return (
         <div className="space-y-6">
@@ -59,7 +65,7 @@ export default function Inventory() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
                 <div className="bg-surface border border-slate-700 p-4 rounded-xl flex items-center gap-3">
                     <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
                         <Package className="w-5 h-5 text-blue-500" />
@@ -94,6 +100,15 @@ export default function Inventory() {
                     <div>
                         <p className="text-slate-400 text-xs font-medium uppercase">Reparación</p>
                         <p className={`text-xl font-bold ${inRepair > 0 ? 'text-amber-500' : 'text-white'}`}>{inRepair}</p>
+                    </div>
+                </div>
+                <div className={`bg-surface border p-4 rounded-xl flex items-center gap-3 ${reviewDue > 0 ? 'border-blue-500/50 bg-blue-500/5' : 'border-slate-700'}`}>
+                    <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                        <Clock className="w-5 h-5 text-blue-500" />
+                    </div>
+                    <div>
+                        <p className="text-slate-400 text-xs font-medium uppercase">Revision</p>
+                        <p className={`text-xl font-bold ${reviewDue > 0 ? 'text-blue-400' : 'text-white'}`}>{reviewDue}</p>
                     </div>
                 </div>
             </div>

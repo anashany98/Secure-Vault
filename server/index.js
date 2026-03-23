@@ -3,11 +3,12 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const { Pool } = require('pg');
+const { allowedOrigins } = require('./config');
+const enforceCsrf = require('./middleware/csrf');
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-let pgPool = null;
 
 const { apiLimiter } = require('./middleware/rateLimiter');
 const { ipBlocker } = require('./middleware/ipBlocker');
@@ -15,6 +16,7 @@ const { initBackupService } = require('./services/backupService');
 
 // Initialize services
 initBackupService();
+app.set('trust proxy', 1);
 
 // Initialize SQLite if enabled
 if (process.env.DB_CLIENT === 'sqlite') {
@@ -23,22 +25,32 @@ if (process.env.DB_CLIENT === 'sqlite') {
 }
 
 // Middleware
-app.use(helmet());
-app.use(cors());
+app.use(helmet({
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    referrerPolicy: { policy: 'no-referrer' },
+}));
+app.use(cors({
+    credentials: true,
+    origin(origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error('Origin not allowed by CORS'));
+    },
+}));
 app.use(morgan('combined'));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(enforceCsrf);
 app.use(ipBlocker);
 app.use('/api/', apiLimiter);
 
 // Database Pool
 if (process.env.DB_CLIENT !== 'sqlite') {
     if (process.env.DATABASE_URL) {
-        pgPool = new Pool({
-            connectionString: process.env.DATABASE_URL,
-        });
-
         // Test DB Connection
-        pgPool.connect((err, client, release) => {
+        db.pool.connect((err, client, release) => {
             if (err) {
                 return console.error('Error acquiring client', err.stack);
             }
@@ -61,6 +73,8 @@ app.use('/api/audit', require('./routes/audit'));
 app.use('/api/shares', require('./routes/shares'));
 app.use('/api/employees', require('./routes/employees'));
 app.use('/api/config', require('./routes/config'));
+app.use('/api/templates', require('./routes/templates'));
+app.use('/api/alerts', require('./routes/alerts'));
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date() });
@@ -75,8 +89,8 @@ if (process.env.NODE_ENV !== 'test') {
 
 // Handle shutdown
 process.on('SIGTERM', () => {
-    if (pgPool) {
-        pgPool.end(() => {
+    if (process.env.DB_CLIENT !== 'sqlite' && typeof db.pool?.end === 'function') {
+        db.pool.end(() => {
             console.log('Pool has ended');
         });
     }
